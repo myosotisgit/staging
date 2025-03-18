@@ -1,0 +1,63 @@
+#! /usr/bin/bash
+#
+# 'ubstage' configuration file 
+# When adding variables/values make sure to use the 'bash' style variable declaration
+# Rename ubstage.conf.sample to ubstage.conf and add your custom values
+
+#---------------------------------------------------------
+# Laravel forge user home directory
+user_home_dir="/home/forge"
+
+#----------------------------------------------------------
+# Local PATH to ubstage script
+# WARNING: No trailing slash!
+ubstage_path="CHANGE_DEFAULT"
+
+#----------------------------------------------------------
+# Path to Github repositories
+# WARNING: No Trailing slash in PATH!
+reposPath="CHANGE_DEFAULT"
+
+#----------------------------------------------------------
+# Folder name for the ubstage.sh repository 
+# REQUIRED: folder must be located in reposPath!
+# NOTE: Do not add the PATH to the folder name!!!!!!
+repo_ubstage_folder_name="CHANGE_DEFAULT"
+
+#----------------------------------------------------------
+# Config file version
+# Version of the config file. This is checked and compared when running
+# wrupdate.sh against its internal version number. If there is a mismatch
+# a fatal error will occur.
+#
+# NOTE: It is not recommended to manually match the version number of 
+# an existing wrupdate.conf to wrupdate.sh. New config variable(s) may be
+# added with a minor or major update. Always use wrupdate.conf-sample for
+# the latest version!
+# 
+#----------------------------------------------------------
+config_version="1.0"
+
+#----------------------------------------------------------
+# Script modus
+# Set the modus (git pull or git fetch) for this update script.
+# This script can be used to update a mirrored git repo (with fetch)
+# or update a cloned repository (for development)
+# Values: pull (cloned) | fetch (mirrored)
+gitmodus="fetch"
+
+#----------------------------------------------------------
+# Branch name for main
+default_branch="master"
+
+# ************************************************************************
+# Laravel Forge and Ubuntu configuration
+
+# IT'S NOT RECOMMENDED TO CHANGE ANYTHING BELOW THIS LINE
+
+#----------------------------------------------------------
+# IP Whitelist Laravel Forge servers
+# https://forge.laravel.com/docs/introduction#forge-ip-addresses
+# https://forge.laravel.com/ips-v4.txt
+whitelistForgeIp=(159.203.150.232 45.55.124.124 159.203.150.216 165.227.248.218 )
+ 

@@ -1,0 +1,1160 @@
+#!/usr/bin/bash
+#
+# Ubuntu installation & configuration (staging) script for new installs or post forge.
+#
+# This script will install applications and configure them on a fresh Ubuntu OS
+# Compatible with: Unbuntu 24.04 LTS
+#
+
+#*****************************************************************
+# SCRIPT DEFAULT SETTINGS
+# Override these settings in ubstage.conf
+#
+#*****************************************************************
+
+# Script version
+version="1.0";
+
+# Run level
+# Value: true (default) false
+# Can be enabled using script arguments
+dry_run=true;
+
+# Stage type
+# which type of staging should be executed. Default is "ubuntu"
+# Values: ubuntu, postforge
+stage_type="ubuntu"
+
+# log level
+# values: trace, debug, info, notice (verbose), warning, error, fatal
+# default: warning
+# Can be set with the log level argument
+log_level="debug"
+
+# Log route
+# default set to 'screen'
+# Do NOT change this value. Use ubstage.conf
+log_route="screen"
+
+# Default configuration filename
+config_file="ubstage.conf"
+config_file_sample="ubstage.conf-sample"
+repo_ubstage_folder_name="tooling.git"
+
+# SERVER CONFIG VARIABLES
+# Do not use a trailing slash!
+user_home_dir="/home/forge"
+
+#*****************************************************************
+# SCRIPT INTERNAL CONSTANTS AND SETTINGS
+#
+#*****************************************************************
+
+# Commands/applications used by this script that should be available for bash
+usedAppsArray=("journalctl" "tee" "whoami" "basename" "dirname" "timedatectl" "getopt")
+installDependenciesArray=("figlet" "zip" "unzip")
+
+# Log level array
+# log level MUST match the log level color definition array logColors[]
+declare -A logLevels
+logLevels[trace]=0
+logLevels[debug]=1
+logLevels[info]=2
+logLevels[notice]=3
+logLevels[warning]=4
+logLevels[error]=5
+logLevels[fatal]=6
+
+# Color Variables
+# These color variables are used in the color functions
+# Note: when adding a new color also create the color function below
+# Bash color generator: https://robotmoon.com/bash-prompt-generator/
+# See also: https://stackoverflow.com/a/4332530
+colorgreen='\e[1;32m'
+colorblue='\e[1;34m'
+colorblue='\033[1;34m'
+colorred='\e[1;31m'
+coloryellow='\e[1;33m'
+colororange='\033[1;31m'
+# Reset color
+colorclear='\e[0m'
+
+# Array with log level color definitions
+# See function log()
+declare -A logColors
+logColors["fatal"]='\e[38;5;196m' # Red
+logColors["error"]='\e[38;5;160m' # Red
+logColors["warning"]='\e[38;5;208m' # orange
+logColors["notice"]='\e[38;5;11m' # yellow
+logColors["info"]='\e[38;5;15m' #white
+logColors["debug"]='\e[38;5;248m' #gray
+logColors["trace"]='\e[38;5;248m' # Gray
+logColors["reset"]='\033[0m'    # Reset color
+
+
+#*****************************************************************
+# SCRIPT FUNCTIONS 
+#
+# Script functions that are required and should be available before application functions
+#
+#*****************************************************************
+
+#-----------------------------------------------
+# Function
+# Root check
+# This script must be run as root
+
+function chkRoot() {
+	
+   if [[ ! "$(whoami)" = "root" ]]; then
+    echo "Error: You must run this script as root"
+   fi
+} # END of function
+
+# Run required function
+chkRoot
+
+#----------------------------------------------------------
+# Function
+#  Locate and set script name and paths to read the config file
+# The script can be started from any location (if in $PATH) or by calling the script root path
+# In both case we need to load the config file
+function setPaths() {
+	
+    current_path=`pwd`
+    script_name=`basename "$0"` # path used to execute this script
+    script_path=`dirname "$0"` # is empty when executed from .
+    self_path="${0}" #Path and script that was executed
+
+    # When this script is installed in the local PATH and executed without
+    # specifying a path, the $PATH environment variable is used to locate the script
+    script_env_path=`command -v ubstage.sh`
+
+    # Set datetime when this script started
+    datetime_start=$(date +"%Y-%m-%d_%I_%M_%p")
+
+    # Debugging
+    # log function might not be available. Check that
+    # if declare -f "log" >/dev/null; then
+    #     log debug "setPath: path found and set to"
+    #     log debug "current_path: $current_path, script_name: $script_name, script_path: $script_path, self_path: $self_path, script_env_path: $script_env_path"
+    # else
+    #     echo "-- setPath: path found and set to"
+    #     echo "-- current_path: $current_path, script_name: $script_name, script_path: $script_path, self_path: $self_path, script_env_path: $script_env_path"
+    # fi
+
+} # END of function
+
+# Executing required function
+setPaths
+
+# ----------------------------------------------
+# Function
+# Check if a given command/application is available.
+# Expects: array of commands (see usedAppsArray)
+# Returns: true/false
+# Note: Also returns false when command is incorrect
+function chkCommands() {
+
+# load array
+local appsToCheck=("$@")
+
+for app in "${appsToCheck[@]}"; do
+    if [ ! -x "$(command -v $app)" ]; then
+        echo "Error: the command $app was not found on this system. Check usedAppsArray. Exiting...."
+        exit 1
+		fi
+done
+} # END of function
+
+# Executing required function
+chkCommands "${usedAppsArray[@]}"
+
+# Function areYouSure
+function areYouSure() {
+    read -p "Continue (Y/N)? : " answer
+   case $answer in
+      [yY] )
+          echo "Continuing with script..."
+         ;;
+     [nN] )
+         echo "Exiting..."
+         exit 1
+         ;;
+     * )
+         echo "Incorrect choice. Choose Y/N next time... "
+         exit 1
+         ;;
+   esac
+} # END of function
+
+#----------------------------------------------------------
+# Function
+# Color Functions
+#
+
+function colorGreen(){
+        echo -e $colorgreen$1$colorclear
+}
+function colorBlue(){
+        echo -e $colorblue$1$colorclear
+}
+function colorRed(){
+        echo -e $colorred$1$colorclear
+}
+function colorYellow(){
+        echo -e $coloryellow$1$colorclear
+}
+function colorOrange(){
+        echo -e $colororange$1$colorclear
+}
+
+#----------------------------------------------------------------
+# Function
+# logFileCheck()
+# The available log routes are: screen, file
+#
+# Usage: logFileCheck <log_route> <log_path> <current path>
+#
+# Global arguments
+# log_file_name_path
+#
+# Returns (global)
+# log_file_name_path: full path and filename to log file
+
+function logFileCheck() {
+
+   # Read arguments
+   #echo "Started function logFileCheck: logFileCheck arguments are: $@"
+   local log_route_local="$1"
+   local log_path_local="$2"
+   local current_path_local="$3"
+
+    # log file name
+   local datetime_prefix=$(date +"%Y-%m-%d")
+   local log_filename="ubstage-$datetime_prefix.log"
+
+
+      if [[ "$log_route_local" == "file" ]]; then
+         #echo "Log route was set as argument to: $log_route_local"
+
+         # Check if log_path is set to empty or its default
+         if [[ -z "$log_path_local"  || "$log_path_local" =~ "_DEFAULT" ]]; then
+            #echo "log path has not been set or set to default. Using current path"
+            # log path has not been set or set to default. Using current path
+            log_file_name_path="$current_path_local/$log_filename"
+            # Test if log file already exists
+            if [[ ! -w "$log_file_name_path" ]]; then
+                #echo " Creating log file: $log_file_name_path"
+                # Creating log file
+               touch "$log_file_name_path"
+            fi
+            echo "Logging is enabled. Log file is: $log_file_name_path"
+            echo "**********************************************************" >>"$log_file_name_path"
+            echo "* Log started: $datetime_start." >>"$log_file_name_path" >>"$log_file_name_path"
+            echo "* Default log level: $log_level. User log level: $user_log_level" >>"$log_file_name_path"
+            if [[ "$log_level" != "info" ]]; then
+               echo "Set log level to 'info' to view default messages in this log file" >>"$log_file_name_path"
+            fi 
+            echo "**********************************************************" >>"$log_file_name_path"
+         else
+            #echo "Log path was already set to: $log_path_local. Using that"
+            # Log path has been set. Check for availability and writability
+            if [[ -d "$log_path_local" && -w "$log_path_local" ]]; then
+               #echo "Log path is writable for $log_path_local"
+               # log path exists and is writable
+               log_file_name_path="$log_path_local/$log_filename"
+               if [[ ! -w "$log_file_name_path" ]]; then
+                   # Creating log file
+                  touch "$log_file_name_path"
+               fi
+               echo "Logging is enabled. Log file is: $log_file_name_path"
+               echo "**********************************************************" >>"$log_file_name_path"
+               echo "* Log started: $datetime_start." >>"$log_file_name_path" >>"$log_file_name_path"
+               echo "* Default log level: $log_level. User log level: $user_log_level" >>"$log_file_name_path"
+               if [[ "$log_level" != "info" ]]; then
+                  echo "Set log level to 'info' to view default messages in this log file" >>"$log_file_name_path"
+               fi 
+               echo "**********************************************************" >>"$log_file_name_path"
+            else
+               #echo "Log path is NOT writable for $log_path_local"
+               # log path does not exists or is not writable
+               colorOrange "Warning: The log path ($log_path), set in ubstage.conf, does not exists or is not writable. Logging to file is disabled"
+               # Reset log file name and path to override setting in ubstage.conf that is not correct
+               log_file_name_path=""
+            fi
+         fi # END of if log_path
+      fi # END of if log_route=file
+
+} # END of function
+
+
+#----------------------------------------------------------------
+# log()
+# Function that logs to a configured log route
+# The available log route are: screen, file
+#
+# Usage: log <log level> <message>
+# 
+# Log levels
+# 0 - trace:  Increasing level of details
+# 1 - debug:  Debugging messages
+# 2 - info:   Informational messages
+# 3 - notice:  (verbose), ormal, but significant conditions
+# 4 - warn:   Warning conditions
+# 5 - error:  Error conditions
+# 6 - fatal:  Fatal conditions
+# 
+# Global arguments
+# -_log_level
+# - user_log_level (cmd line argument)
+# - log_color
+# - log_route
+# - log filename and path (log_file_name_path)
+
+
+function log() {
+
+   # Read arguments
+   #Not logging the log function :-p
+   #echo "Arguments fo log(): $@"
+   #echo "Globals are: user log level: $user_log_level, log route: $log_route, log file: $log_file_name_path"
+   local log_level_arg="$1"
+   shift 1
+   local log_message="$@"
+   local log_route_local="$log_route"
+
+   if [ -z "$log_level_arg" ] || [ -z "$log_message" ]; then
+       # Cannot use the log function within itself
+       colorRed "Fatal: Incorrect arguments for function log(): $log_level_arg, $log_message, $@";
+       exit 1;
+   fi
+
+   # Is log level set by user (via command line) ?
+   if [[ -n "$user_log_level" ]]; then
+       log_level="$user_log_level"
+   fi
+
+    # Check if level exists
+    # See https://stackoverflow.com/q/48086633 for the magic
+    # not sure how the 'return 1 and return 2' actually work
+    [[ ${logLevels[$log_level_arg]} ]] || return 1
+
+    #check if level is enough
+    (( ${logLevels[$log_level_arg]} < ${logLevels[$log_level]} )) && return 2
+
+    #log here
+    local logcolor=${logColors[$log_level_arg]}
+    if [[ "$log_route_local" == "file" && "$log_file_name_path" ]]; then
+      echo -e $logcolor"${log_level_arg}: ${log_message}"${logColors["reset"]} >>"$log_file_name_path"
+    else
+      echo -e $logcolor"${log_level_arg}: ${log_message}"${logColors["reset"]}
+    fi
+
+    # Exit app when log level is 'error' or 'fatal'
+    if [[ "$log_level_arg" == "error" || "$log_level_arg" == "fatal" ]]; then
+      if [[ "$log_route_local" == "file" ]]; then
+         echo -e $logcolor"${log_level_arg} error occured. Exiting program..."${logColors["reset"]} >>"$log_file_name_path"
+      else
+         echo -e $logcolor"${log_level_arg} error occured. Exiting program..."${logColors["reset"]}
+      fi
+      exit 1
+    fi
+
+
+} # END of function
+
+# ----------------------------------------------
+# Function
+# 
+function readConfigFile() {
+# Reading config file
+if [[ -r "$script_path/$config_file" ]]; then
+    # Found config file
+    log notice "-- Found readable config file in ($script_path/$config_file). Importing..."
+
+# ----------------------------------------------
+    # import the config file
+    source "$script_path/$config_file";
+
+# ----------------------------------------------
+    # Check for default values in config file (user did not add customizations)
+    if [[ "$ubstage_path" =~ "_DEFAULT" ]]; then
+      # User did not change default values. exit
+      log warning "The ubstage_path has not been set in $config_file"
+      log error "-> Add your custom values to  $config_file and restart..."
+      exit 0
+    fi
+
+# ----------------------------------------------
+    # Check for ubstage repo folder name default
+    if [[ "$repo_ubstage_folder_name" =~ "_DEFAULT" ]]; then
+      # User did not change default values. exit
+      log warning "The repo_ubstage_folder_name has not been set in $config_file"
+      log error "-> Add your custom values to  $config_file and restart..."
+      exit 0
+    fi
+    if [[ "$repo_ubstage_folder_name" == "FOLDER_NAME_POSTFORGE_REPO" ]]; then
+      # User did not change default values. exit
+      echo -e $red"Error: Default value found for variable 'repo_ubstage_folder_name' in the config file!$colorclear";
+      echo -e $yellow"Info:$colorclear Add your custom value to $config_file and restart..."
+      exit 0
+  else
+      # Check if user, accidentally, added a path and name
+      if [[ "$repo_ubstage_folder_name" == *\/* ]] || [[ "$repo_ubstage_folder_name" == *\\* ]]; then
+         echo -e $red"Error: The config value contains a path instead of just the folder name!$colorclear";
+         echo -e $yellow"Info:$colorclear Remove the path from the folder name."
+         exit 0
+      fi
+
+    fi
+
+# ----------------------------------------------
+# Check if Path to Git Repos exists
+if [[ -r "$reposPath" && -d "$reposPath" ]]; then
+   if [[ verbose == "true" ]]; then
+       echo "-- Path to git repositories ($reposPath) is found and is readable"
+   fi
+else
+    echo -e ${logColors["fatal"]}"Fatal: Git repos folder not found at $reposPath"${logColors["reset"]}
+    echo -e ${logColors["notice"]}"Add the correct path to the ubstage repository..."${logColors["reset"]}
+    exit 0
+fi
+
+ # Config file was not found ----------------------------------
+else
+    if [[ -e "$script_path/$config_file_sample" ]]; then
+      echo -e $red"Fatal: Config file ($config_file) not found in $script_path$colorclear";
+      echo -e $yellow"Info:$colorclear Rename the sample config ($file_config_sample) file, adjust permissions and restart..."
+      exit 0
+    else
+      echo -e $red"Fatal: Sample Config file ($config_file_sample) not found in $script_path$colorclear";
+      echo -e $yellow"Info:$colorclear Reinstall the script and sample configuration";
+      exit 0
+    fi
+
+fi # END of reading config file check
+} # END of function
+
+# Execute required function
+readConfigFile
+
+#----------------------------------------------------------
+# Version check
+# Check if the version of ubstage.sh and ubstage.conf match
+# Run version check if requested by user
+function checkVersion() {
+ # Logging
+    log debug "-- Started function ${FUNCNAME[0]} "
+
+      echo "-- Running version check"
+      log debug "Running version check for script and config"
+      log debug "Checking if script and config version are matching";
+      if [[ "$version" == "$config_version" ]]; then
+         #  Versions are matching
+      echo "Script version: $version"
+      echo "Config version: $config_version"
+         log notice "-- Config version and application version are matching";
+      else
+         log warning "The ubstage.sh ($version) and ubstage.conf ($config_version) version are not matching!";
+         log fatal "-> Update ubstage.sh and ubstage.conf to the latest release."
+         exit 0
+      fi
+} # END of function
+
+
+isPackageInstalled() {
+    local package="$1"
+
+    # Check if the package is installed
+    dpkg -l | grep -qw "$package" || return 1
+
+    # Check if a systemd service with the same name is active
+    if systemctl list-units --type=service --all | grep -q "^.*${package}.*active"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+#----------------------------------------------------------------
+# addLinesToFile()
+# Function that adds lines to a config file
+
+addLinesToFile() {
+
+    # Logging
+    log debug "-- Started function ${FUNCNAME[0]} "
+
+    local file="$1"
+    # Ensure the file exists
+    touch "$file"
+    local content="$2"
+    local missing_lines=()
+
+    while IFS= read -r line; do
+        grep -qF -- "$line" "$file" || missing_lines+=("$line")
+    done <<< "$content"
+
+    if [[ ${#missing_lines[@]} -gt 0 ]]; then
+        printf "%s\n" "${missing_lines[@]}" | tee -a "$file" > /dev/null
+    fi
+}
+
+#----------------------------------------------------------------
+# ReplaceFileIfExists()
+# Function to replace a file if it exists
+function replaceFileIfExists() {
+ # Logging
+    log debug "-- Started function ${FUNCNAME[0]} "
+
+    local source_file="$1"
+    local target_file="$2"
+
+    if [[ -f "$target_file" ]]; then
+        log info "Replacing $target_file with $source_file..."
+        cp -f "$source_file" "$target_file"
+        log info "Replacement complete."
+    else
+        log warn "Target file $target_file does not exist. No action taken."
+    fi
+} # END of function
+
+
+#----------------------------------------------------------------
+# Add new file if not existing
+function addFileIfNotExists() {
+ # Logging
+    log debug "-- Started function ${FUNCNAME[0]} "
+
+    local source_file="$1"
+    local target_file="$2"
+    if [[ ! -f "$target_file" ]]; then
+            log info "Adding $source_file to target $target_file"
+            cp -f "$source_file" "$target_file"
+    else
+        log warn "Target file $target_file already exists. No action taken."
+    fi
+
+} # END of function
+
+# ----------------------------------------------
+# Dry run function
+
+function dryRun() {
+  printf -v cmd_str '%q ' "$@"
+
+  if [[ $dry_run == 'true' ]]; then
+      echo "Dry-run: not executing $cmd_str" >&2
+  else
+      eval "$cmd_str"
+  fi
+}
+
+# ----------------------------------------------
+# Show the intro header when starting script
+
+function showIntro() {
+        # Logging
+        log debug "Started function ${FUNCNAME[0]} "
+
+        echo "$(colorYellow '----------------------------------------------')"
+        echo "$(colorYellow ' Ubuntu staging script')"
+        echo "$(colorYellow ' Version: ')$version";
+        if [ $dry_run = true ]; then 
+                echo "$(colorYellow ' Dry run:') enabled" 
+        fi;
+        echo "$(colorYellow ' Staging type: ')$stage_type";
+        echo "$(colorYellow ' Description:')";
+        echo " UBstage can stage a fresh Ubuntu OS and runs post-configuration scripts to improve the configuration and security of Forge installed servers";
+        echo "$(colorYellow '----------------------------------------------')"
+        echo ""
+        echo "$(colorRed '***************************************')"
+        echo "$(colorRed '* DANGER        DANGER                 DANGER        *')"
+        echo "$(colorRed '***************************************')"
+        echo "1) This script will PERMANENTLY change the configuration and overwrite configuration files"
+        echo "2) This script requires a fresh install of Ubuntu or a server provisioned by Laravel Forge"
+        echo ""
+        echo "-> There is NO option to restore the changed config/files!"
+        echo "-> Continue at your own risk."
+        echo ""
+}
+
+# ----------------------------------------------
+# Function
+# Section header
+function sectionHeader() {
+
+        if [ -z "$1" ]; then
+        header_title="No section title"
+        else
+        header_title="$1"
+        fi
+        echo "$(colorYellow '----------------------------------------------')"
+        echo "$header_title"
+        echo "$(colorYellow '----------------------------------------------')"
+
+} # END of function 
+
+#*****************************************************************
+# HELP PAGE 
+#*****************************************************************
+function usage() {
+  echo "Usage: "$0" [options]"
+  echo ""
+  echo "Options:"
+  echo ""
+  echo " -f     Run post-forge configuration"
+  echo " -h     This help page"
+  echo ""
+  echo "Long options:"
+  echo ""
+  echo " --dry   Do a dry run without changing data"
+  echo " --loglevel possible values: trace, debug, info, notice, warning, error, fatal"
+  echo " For example 'ubstage.sh --warning'"
+        echo ""
+}
+
+#*****************************************************************
+# COMMAND LINE OPTIONS
+#*****************************************************************
+
+#
+options=$(getopt -o 'fhuv' --long 'dry,trace,debug,info,notice,warning,error,fatal' -n "$0" -- "$@")
+if [ $? -ne 0 ]; then
+    # if getopt returns a non-zero status there was an error
+    usage
+    exit 1
+fi
+
+# eval the options
+eval set -- "$options"
+unset options
+
+# Process the parsed options and arguments
+while true; do
+   case "$1" in
+       '-f')
+          stage_type=forge
+          shift
+          continue 
+       ;;
+       '-h')
+           usage
+           exit 1
+       ;;
+       '-u')
+          stage_type=ubuntu
+          shift
+          continue 
+       ;;
+       '-v')
+          checkVersion
+          exit 1
+       ;;
+       '--')
+           shift
+           break
+       ;;
+       '--dry')
+           dry_run="true"
+           shift
+           continue
+       ;;
+       '--trace')
+           user_log_level="trace"
+           shift
+           continue
+       ;;
+       '--debug')
+           user_log_level="debug"
+           shift
+           continue
+       ;;
+       '--info')
+           user_log_level="info"
+           shift
+           continue
+       ;;
+       '--notice')
+           user_log_level="notice"
+           shift
+           continue
+       ;;
+       '--warning')
+           user_log_level="warning"
+           shift
+           continue
+       ;;
+       '--error')
+           user_log_level="error"
+           shift
+           continue
+       ;;
+       '--fatal')
+           user_log_level="fatal"
+           shift
+           continue
+       ;;
+      *)
+       echo 'No valid options or arguments supplied. Ignoring all options and using default configuration' >&2
+       break
+      ;;
+   esac
+done
+
+log debug "Initialising application. Setting up paths"
+log debug "Script paths has been set to"
+log debug "Current path: $current_path"
+log debug "Script name: $script_name"
+log debug "Script path: $script_path"
+log debug "Script env path: $script_env_path"
+log debug "Self path: $self_path"
+
+
+
+#************************************************************************
+#
+# LARAVEL FORGE FUNCTIONS
+#
+#************************************************************************
+
+#------------------------------------------------
+# Function
+# Whitelist Laravel Forge IP's in the ufw firewall
+function addFirewallRulesForge() {
+
+sectionHeader "UFW Firewall rules for forge"
+
+# Check if ufw is enabled
+$(ufw status | grep -qw active)
+if [ "$?" == 1 ]; then
+        log info "ufw firewall is not active. Enable your firewall. Rulew will be added."
+fi
+# Adding firewall rules, even when ufw is disabled
+for t in ${whitelistForgeIp[@]}; do
+  log debug "Adding new firewall rule for $t"
+        dryRun ufw allow from $t to any port 22 comment "Laravel Forge $t"
+done
+
+} # END of function
+
+#------------------------------------------------
+# Function
+# When Forge provisions a site, it is cloned using --single-branch option. This will tell git
+# to restrict git to use the  "main/master" branch
+# To allow branches, other then main, in the git config enable it
+#------------------------------------------------
+function customGitBranches() {
+sectionHeader "Allow custom feature branches in git repos"
+
+# Git main branch
+log info "Enable custom branches"
+
+# Find folder and add to array git_dirs
+mapfile -t git_dirs < <(find "${user_home_dir}" -name .git -type d -prune)
+
+for d in "${git_dirs[@]}"; do
+  echo "Processing directory: $d"
+  cd "$d/.." || continue
+  read -p "Do you want to allow custom branches? (Y/N): " answer </dev/tty
+
+  case "$answer" in
+    [yY]) 
+      echo "info : Enabling custom branches in $d"
+      echo "Executing: git config remote.origin.fetch refs/heads/*:refs/remotes/origin/*"
+      dryRun git config remote.origin.fetch refs/heads/*:refs/remotes/origin/*
+      ;;
+    [nN]) 
+      echo "Skipping $d"
+      ;;
+    *) 
+      echo "Invalid input, skipping."
+      ;;
+  esac
+
+  echo "Moving to next directory..."
+done
+} # END of function
+
+#************************************************************************
+#
+# UBUNTU FUNCTIONS
+#
+#************************************************************************
+
+#-----------------------------------------------
+# Function
+# Limit the journal logs to a maximum size
+function setMaxSizeJournal() {
+    journalctl --vacuum-size=2G
+}
+
+#-----------------------------------------------
+# Function
+# Silence the Message of the Day
+function hushMotd() {
+sectionHeader "Hush hush little MOTD"
+# Disabling motd messages on login
+hushed=0
+if [ ! -f /root/.hushlogin ]; then
+        log info "Disabling message o/t day for root"
+        dryRun touch /root/.hushlogin
+        hushed=1
+fi
+if [ -d "$user_home_dir" ] && [ ! -f "$user_home_dir/.hushlogin" ]; then
+        log info "Disabling message o/t day for $user_home_dir"
+        dryRun touch $user_home_dir/.hushlogin
+        hushed++
+fi
+if [ "$hushed" > 0 ]; then
+        log info "Motd messages are hushed"
+fi
+
+} # END of function
+
+#-----------------------------------------------
+# Function
+# Extending auto-upgrades configuration
+#
+function configUnattendedUpgrades() {
+
+sectionHeader "Installing and configuring unattended upgrades"
+
+if ! isPackageInstalled "unattended-upgrades"; then
+	log warning "Unattended-upgrades is not installed. Installing it..."
+	apt install -y unattended-upgrades
+fi
+log info "Unattended-upgradess is installed. Configuring it."
+
+# Overwriting 10Periodic with own config
+# Forge also uses this mechanism
+SOURCE_FILE="${current_path}/assets/10Periodic"         # Your version in assets/
+TARGET_FILE="/etc/apt/apt.conf.d/10Periodic"  # File to check and replace
+# Call the function
+dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
+
+
+# Overwriting 50unattende-upgrades with own config
+# Forge also uses this mechanism
+
+# Define file paths
+SOURCE_FILE="${current_path}/assets/50unattended-upgrades"         # Your version in assets/
+TARGET_FILE="/etc/apt/apt.conf.d/50unattended-upgrades"  # File to check and replace
+
+# Call the function
+dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
+
+# Check if unattended upgrades are working
+log info "Checking if Unattended-updrades are working. Dry-run. Check the input"
+unattended-upgrades --dry-run --verbose
+
+} # END of function
+
+
+#-----------------------------------------------
+# Function
+# Extending the sshd config if not available
+
+function hardenSSH() {
+sectionHeader "Hardening SSH"
+
+# Check if config dir exists (it should)
+if [ ! -d /etc/ssh/sshd_config.d ]; then mkdir /etc/ssh/sshd_config.d; fi
+
+# Check config
+# Extract values
+password_auth_value=$(sshd -G | awk '/^passwordauthentication/ {print $2}')
+permit_root_login=$(sshd -G | awk '/^permitrootlogin/ {print $2}')
+banner=$(sshd -G | awk '/^banner/ {print $2}')
+
+log debug "ssh hardening config: PasswordAuthentication $password_auth_value, PermietRootLogin $permit_root_login, Banner $banner"
+
+# Required sshd values
+req_password_auth="no"
+req_banner="none"
+# Check if PermitRootLogin is an acceptable value
+case "$permit_root_login" in
+    no|prohibit-password|without-password|forced-command)
+        permit_root_check=true
+        ;;
+    *)
+        permit_root_check=false
+        ;;
+esac
+
+# Check all conditions
+if [[ "$password_auth_value" == "$req_password_auth" && "$permit_root_check" == true && "$banner" == "$req_banner" ]]; then
+        log info "SSH is already hardened."
+else
+    log info "SSH is not hardened. Adding new configuration."
+    # Define file paths
+    SOURCE_FILE="${current_path}/assets/90-postforge.conf"  # Your version in assets/
+    TARGET_FILE="/etc/ssh/sshd_config.d/90-postforge.conf"  # File to check and replace
+
+    # Call the function
+    dryRun addFileIfNotExists "$SOURCE_FILE" "$TARGET_FILE"
+    log info "Added new ssh config. Restarting ssh"
+    service ssh restart
+fi
+
+} # END of function
+
+# ----------------------------------------------
+# set hostname
+function setHostname() {
+
+  # Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "${FUNCNAME[0]}"
+
+  # Ask user for hostname
+  # Show current hostname
+        if [ -x "$(command -v hostnamectl)" ]; then
+        log info "-- Current hostname: $(hostnamectl hostname)"
+                read -p "Enter the new hostname: " answer
+
+                if [[ "$answer" =~ ^[a-z0-9_-]+$ ]]; then
+                        if [[ "$answer" != $(hostnamectl hostname) ]]; then
+                                #valid hostname
+                                log info "-- Setting hostname to $answer"
+                                dryRun hostnamectl set-hostname "$answer"
+                                log info "-- Adding new hostname to /etc/hosts"
+                                # Update 127.0.0.1 line
+                                dryRun sed -i "s/^127.0.0.1.*/127.0.0.1 $answer.localdomain $answer localhost/" /etc/hosts
+                                # Update ::1 line (optional but recommended for IPv6 consistency)
+                                dryRun sed -i "s/^::1.*/::1 $answer.localdomain $answer ip6-localhost ip6-loopback/" /etc/hosts
+                        else
+                                log warning "-- New and current hostnames are the same. Not changing it"
+                        fi
+                else
+                        log warning "-- The hostname contains invalid characters or spaces. The hostname will not be set"
+                fi
+
+        else
+                log warning "-- hostnamectl command not found. Cannot set the hostname"
+        fi
+
+} # END of function
+
+# ----------------------------------------------
+# Set server timezone
+function setTimezone() {
+
+  # Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "${FUNCNAME[0]}"
+
+        if [[ -x "$(command -v timedatectl)" ]]; then
+    while true; do
+        log info "-- Current timezone: $(timedatectl show --property=Timezone --value)"
+        read -p "Enter the new timezone (e.g., Europe/London): " TIMEZONE
+
+        # Check if the exact timezone exists
+        if timedatectl list-timezones | grep -qx "$TIMEZONE"; then
+            break
+        fi
+
+        # Try to suggest a timezone if user entered a partial name
+        SUGGESTION=$(timedatectl list-timezones | grep -i "/$TIMEZONE$" | head -n 1)
+        
+        if [[ -n "$SUGGESTION" ]]; then
+            echo "Did you mean: $SUGGESTION?"
+        else
+            echo "Invalid timezone. Please check available timezones using: timedatectl list-timezones"
+        fi
+    done
+        else
+    log warning "The timedatectl command is not available. Cannot set the timezone."
+        fi
+
+        # Set the timezone using timedatectl
+        dryRun timedatectl set-timezone "$TIMEZONE"
+
+        # Manually update /etc/timezone
+        dryRun echo "$TIMEZONE" | sudo tee /etc/timezone > /dev/null
+
+        log warning "-- Updating the timezone will NOT update the timezone on Laravel Forge dashboard"
+        log warning "-- Laravel forge does NOT adjust /etc/timezone!"
+        log info "-- Timezone successfully updated to $TIMEZONE."
+
+} # END of function
+
+# ----------------------------------------------
+# Install NTPsec
+# See also: https://docs.ntpsec.org/latest/ntpsec.html
+
+function installNtpsec() {
+
+  # Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "${FUNCNAME[0]}"
+
+	# install ntp
+	log info "Checking for older version of ntp/ntpsec..."
+	if dpkg -l | grep -q "ntp"; then
+		echo ""
+		log info "Found older version of ntp/ntpsec. Removing"
+		echo ""
+		dryRun apt remove --purge -y ntp
+		dryRun apt remove --purge -y ntpsec
+		dryRun apt autoremove -y
+	fi
+
+	echo ""
+	log info "Installing ntpsec"
+	echo ""
+	dryRun apt update & dryRun apt install ntpsec -y
+
+	# Check if install was correct
+  if ! command -v ntpq &> /dev/null; then
+        log warning "NTPsec installation failed!"
+        return 1
+  fi
+	# Enable and start NTPsec service
+		echo ""
+		log info "Enabling ntpsec to run at system start"
+    dryRun systemctl enable ntpsec
+    dryRun systemctl start ntpsec
+
+    # Check if NTPsec is running
+    if systemctl is-active --quiet ntpsec; then
+				echo ""
+        log info "NTPsec service is running."
+    else
+				echo ""
+        log warning "NTPsec is not running! Check the install log and configuration"
+        return 1
+    fi
+
+    # Add firewall rule for NTP (UDP 123)
+		echo ""
+    echo "Allowing NTP through the firewall..."
+    dryRun ufw allow 123/udp comment 'ntp traffic'
+		
+		echo ""
+    log info "NTPsec installation and setup complete."
+		echo ""
+
+
+} # END of function
+
+#-----------------------------------------------
+# Function
+# Install and configure RKHunter rootkit checker
+function setupRkhunter() {
+
+sectionHeader "Rkhunter Check root kit"
+
+    local email="$1"
+
+    # Check if rkhunter is installed
+		if ! command -v rkhunter &>/dev/null; then
+        log info "Installing rkhunter..."
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y rkhunter 
+        log info "Installing mailutils..."
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mailutils
+    else
+        log info "rkhunter is already installed. Configuring it"
+    fi
+		
+	 if grep -q "^MAIL-ON-WARNING" /etc/rkhunter.conf; then
+        sudo sed -i "s/^MAIL-ON-WARNING=.*/MAIL-ON-WARNING=\"$email\"/" /etc/rkhunter.conf
+    else
+        echo "MAIL-ON-WARNING=\"$email\"" | sudo tee -a /etc/rkhunter.conf
+    fi
+
+    log info "Setting up daily scan"
+    echo "0 3 * * * root /usr/bin/rkhunter --check --sk --report-warnings-only | mail -s 'rkhunter Security Scan Report' $email" | sudo tee /etc/cron.d/rkhunter_scan
+
+# Function to create daily update cron job
+    log info "Setting up daily updates"
+    echo "0 2 * * * root /usr/bin/rkhunter --update && /usr/bin/rkhunter --propupd" | sudo tee /etc/cron.d/rkhunter_update
+
+# Function to run initial update and scan
+    log info "Updating rkhunter and running initial scan..."
+    sudo rkhunter --update
+    sudo rkhunter --propupd
+    log warning "Run sudo rkhunter --check --sk for a complete rootkit scan"
+
+	log info "Rkhunter rootkit checker installed and configured."
+	log info "Cron script installed for updating and regular rootkit check. See /etc/cron.d"
+} # END of function
+
+#-----------------------------------------------
+# Function
+# Install and configure Lynis system checker
+# See Lynis doc for most recent install procedure
+# https://packages.cisofy.com/community/#debian-ubuntu
+function setupLynis() {
+
+# Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "Lynis System and rootkit checker"
+
+
+curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/cisofy-software-public.gpg echo "deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
+echo "deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
+
+apt install apt-transport-https
+echo 'Acquire::Languages "none";' | sudo tee /etc/apt/apt.conf.d/99disable-translations
+echo "deb https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
+apt update
+apt install lynis
+log info "Lynis is installed. Checking version"
+lynis show version
+log warning "Run 'lynis audit system' to scan the whole system"
+
+} # END of function
+
+#************************************************************************
+#
+# MAIN APPLICATION START
+#
+# Required script functions are already executed
+#************************************************************************
+
+function main() {
+    # Start main script
+    showIntro
+    areYouSure
+
+case $stage_type in
+	forge)
+		log info "Staging type is set to $stage_type"
+		# Ubuntu business
+        #hardenSSH
+		#setMaxSizeJournal
+        #configUnattendedUpgrades
+        #installNtpsec
+		#hushMotd
+        # Applications
+        #setupRkhunter tech@myosotis-ict.nl
+        setupLynis
+		# forge business
+		#addFirewallRulesForge
+		#customGitBranches
+        
+	;;
+	ubuntu)
+		log info "Staging type is set to $stage_type (default)"
+		#setHostname
+		#setTimezone
+		#hardenSSH
+        #hushMotd
+		#configUnattendedUpgrades
+        #setMaxSizeJournal
+		#installNtpsec
+        # Applications
+        #setupRkhunter tech@myosotis-ict.nl
+		setupLynis
+	;;
+esac
+
+sectionHeader "ubstage script has completed. Reboot the system"
+}
+
+# Start main function
+main 
+
+# END of startmain=1 
