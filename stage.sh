@@ -451,6 +451,7 @@ function usage() {
 # COMMAND LINE OPTIONS
 #*****************************************************************
 
+echo "Received arguments: $@"
 #
 options=$(getopt -o 'fhuv' --long 'dry,trace,debug,info,notice,warning,error,fatal' -n "$0" -- "$@")
 if [ $? -ne 0 ]; then
