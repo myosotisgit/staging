@@ -170,6 +170,7 @@ done
 # Executing required function
 chkCommands "${usedAppsArray[@]}"
 
+# ----------------------------------------------
 # Function areYouSure
 function areYouSure() {
     read -p "Continue (Y/N)? : " answer
