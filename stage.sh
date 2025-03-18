@@ -177,7 +177,7 @@ chkCommands "${usedAppsArray[@]}"
 # ----------------------------------------------
 # Function areYouSure
 function areYouSure() {
-    read -p "Continue (Y/N)? : " answer
+    read -p "Continue (Y/N)? : " answer </dev/tty
    case $answer in
       [yY] )
           echo "Continuing with script..."
