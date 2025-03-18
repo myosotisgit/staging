@@ -34,6 +34,7 @@ stage_type="ubuntu"
 # default: warning
 # Can be set with the log level argument
 log_level="debug"
+user_log_level="" # Can be set via commandline. Must be defined when running 'set -u'
 
 # Log route
 # default set to 'screen'
@@ -131,7 +132,7 @@ function setPaths() {
 
     # When this script is installed in the local PATH and executed without
     # specifying a path, the $PATH environment variable is used to locate the script
-    script_env_path=`command -v ubstage.sh`
+    script_env_path=`command -v ${0}`
 
     # Set datetime when this script started
     datetime_start=$(date +"%Y-%m-%d_%I_%M_%p")
@@ -426,6 +427,121 @@ function sectionHeader() {
         echo "$(colorYellow '----------------------------------------------')"
 
 } # END of function 
+
+#*****************************************************************
+# HELP PAGE 
+#*****************************************************************
+function usage() {
+  echo "Usage: "$0" [options]"
+  echo ""
+  echo "Options:"
+  echo ""
+  echo " -f     Run post-forge configuration"
+  echo " -h     This help page"
+  echo ""
+  echo "Long options:"
+  echo ""
+  echo " --dry   Do a dry run without changing data"
+  echo " --loglevel possible values: trace, debug, info, notice, warning, error, fatal"
+  echo " For example 'ubstage.sh --warning'"
+        echo ""
+}
+
+#*****************************************************************
+# COMMAND LINE OPTIONS
+#*****************************************************************
+
+#
+options=$(getopt -o 'fhuv' --long 'dry,trace,debug,info,notice,warning,error,fatal' -n "$0" -- "$@")
+if [ $? -ne 0 ]; then
+    # if getopt returns a non-zero status there was an error
+    usage
+    exit 1
+fi
+
+# eval the options
+eval set -- "$options"
+unset options
+
+# Process the parsed options and arguments
+while true; do
+   case "$1" in
+       '-f')
+          stage_type=forge
+          shift
+          continue 
+       ;;
+       '-h')
+           usage
+           exit 1
+       ;;
+       '-u')
+          stage_type=ubuntu
+          shift
+          continue 
+       ;;
+       '-v')
+          checkVersion
+          exit 1
+       ;;
+       '--')
+           shift
+           break
+       ;;
+       '--dry')
+           dry_run="true"
+           shift
+           continue
+       ;;
+       '--trace')
+           user_log_level="trace"
+           shift
+           continue
+       ;;
+       '--debug')
+           user_log_level="debug"
+           shift
+           continue
+       ;;
+       '--info')
+           user_log_level="info"
+           shift
+           continue
+       ;;
+       '--notice')
+           user_log_level="notice"
+           shift
+           continue
+       ;;
+       '--warning')
+           user_log_level="warning"
+           shift
+           continue
+       ;;
+       '--error')
+           user_log_level="error"
+           shift
+           continue
+       ;;
+       '--fatal')
+           user_log_level="fatal"
+           shift
+           continue
+       ;;
+      *)
+       echo 'No valid options or arguments supplied. Ignoring all options and using default configuration' >&2
+       break
+      ;;
+   esac
+done
+
+log debug "Initialising application. Setting up paths"
+log debug "Script paths has been set to"
+log debug "Current path: $current_path"
+log debug "Script name: $script_name"
+log debug "Script path: $script_path"
+log debug "Script env path: $script_env_path"
+log debug "Self path: $self_path"
 
 #************************************************************************
 #
