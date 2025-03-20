@@ -11,6 +11,7 @@
 # Command: curl -L https://github.com/myosotisgit/staging/raw/refs/heads/main/stage.sh | bash -s -h
 
 set -euo pipefail
+#set -x
 
 #*****************************************************************
 # SCRIPT DEFAULT SETTINGS
@@ -81,7 +82,7 @@ colorgreen='\e[1;32m'
 colorblue='\e[1;34m'
 colorblue='\033[1;34m'
 colorred='\e[1;31m'
-coloryellow='\e[1;33m'
+coloryellow="\033[1;33m"
 colororange='\033[1;31m'
 # Reset color
 colorclear='\e[0m'
@@ -168,8 +169,8 @@ local appsToCheck=("$@")
 for app in "${appsToCheck[@]}"; do
     if [ ! -x "$(command -v $app)" ]; then
         echo "Error: the command $app was not found on this system. Check usedAppsArray. Exiting...."
-        exit 1
-		fi
+        return 1
+    fi
 done
 } # END of function
 
@@ -179,18 +180,19 @@ chkCommands "${usedAppsArray[@]}"
 # ----------------------------------------------
 # Function areYouSure
 function areYouSure() {
-    read -p "Continue (Y/N)? : " answer </dev/tty
+   read -p "Continue (Y/N)? : " answer </dev/tty
+    #read -p "Continue (Y/N)? : " answer 
    case $answer in
       [yY] )
           echo "Continuing with script..."
          ;;
      [nN] )
          echo "Exiting..."
-         exit 1
+         return 1
          ;;
      * )
          echo "Incorrect choice. Choose Y/N next time... "
-         exit 1
+         return 1
          ;;
    esac
 } # END of function
@@ -334,7 +336,7 @@ function log() {
    if [ -z "$log_level_arg" ] || [ -z "$log_message" ]; then
        # Cannot use the log function within itself
        colorRed "Fatal: Incorrect arguments for function log(): $log_level_arg, $log_message, $@";
-       exit 1;
+       return 1;
    fi
 
    # Is log level set by user (via command line) ?
@@ -345,10 +347,19 @@ function log() {
     # Check if level exists
     # See https://stackoverflow.com/q/48086633 for the magic
     # not sure how the 'return 1 and return 2' actually work
-    [[ ${logLevels[$log_level_arg]} ]] || return 1
+    # Check if level exists
+    # commented this section because using set -eou will fail because of return 2....
+    #
+#	[[ ${logLevels[$log_level_arg]} ]] || {
+ #   	echo "Log level ${log_level_arg} does not exist"
+  #  	return 1  # or continue gracefully
+#	}
 
-    #check if level is enough
-    (( ${logLevels[$log_level_arg]} < ${logLevels[$log_level]} )) && return 2
+	# Check if level is enough
+#	if (( ${logLevels[$log_level_arg]} < ${logLevels[$log_level]} )); then
+ #   	echo "Log level ${log_level_arg} is too low"
+    	#return 2  # or handle as needed
+#	fi
 
     #log here
     local logcolor=${logColors[$log_level_arg]}
@@ -409,7 +420,7 @@ function showIntro() {
         echo "$(colorYellow ' Ubuntu staging script')"
         echo "$(colorYellow ' Version: ')$version";
         if [ $dry_run = true ]; then 
-                echo "$(colorYellow ' Dry run:') enabled" 
+           echo "$(colorYellow ' Dry run:') enabled" 
         fi;
         echo "$(colorYellow ' Staging type: ')$stage_type";
         echo "$(colorYellow ' Description:')";
@@ -459,28 +470,28 @@ function usage() {
   echo " --dry   Do a dry run without changing data"
   echo " --loglevel possible values: trace, debug, info, notice, warning, error, fatal"
   echo " For example 'ubstage.sh --warning'"
-        echo ""
+  echo ""
 }
 
 #*****************************************************************
 # COMMAND LINE OPTIONS
 #*****************************************************************
 
-log trace "Received commandline arguments: $@"
-#
-options=$(getopt -o 'fhuv' --long 'dry,trace,debug,info,notice,warning,error,fatal' -n "$0" -- "$@")
-if [ $? -ne 0 ]; then
-    # if getopt returns a non-zero status there was an error
-    usage
-    exit 1
+echo "Received commandline arguments ($#): $@"
+
+if [ "$#" -gt 0 ]; then
+    options=$(getopt -o 'fhuv' --long 'dry,trace,debug,info,notice,warning,error,fatal' -n "$(basename "$0")" -- "$@") || {
+        echo "Error parsing options" >&2
+        exit 1
+    }
+    
+    eval set -- "$options"
 fi
 
-# eval the options
-eval set -- "$options"
 unset options
 
 # Process the parsed options and arguments
-while true; do
+while [ "$#" -gt 0 ]; do
    case "$1" in
        '-f')
           stage_type=forge
@@ -610,6 +621,9 @@ log trace "Script path: $script_path"
 log trace "Script env path: $script_env_path"
 log trace "Self path: $self_path"
 
+
+
+
 function main() {
     # Start main script
     showIntro
@@ -634,7 +648,7 @@ case $stage_type in
 	;;
 	ubuntu)
 		log info "Staging type is set to $stage_type (default)"
-		setHostname
+		#setHostname
 		#setTimezone
 		#hardenSSH
         #hushMotd
@@ -653,4 +667,6 @@ sectionHeader "Staging script has completed. Reboot the system"
 # Start main function
 main 
 
+
+set +x
 # END of startmain=1 
