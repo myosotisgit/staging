@@ -154,14 +154,6 @@ function setPaths() {
 # Executing required function
 setPaths
 
-log trace "Initialising application. Setting up paths"
-log trace "Script paths has been set to"
-log trace "Current path: $current_path"
-log trace "Script name: $script_name"
-log trace "Script path: $script_path"
-log trace "Script env path: $script_env_path"
-log trace "Self path: $self_path"
-
 # ----------------------------------------------
 # Function
 # Check if a given command/application is available.
@@ -608,6 +600,15 @@ function setHostname() {
 #
 # Required script functions are already executed
 #************************************************************************
+
+# TRACING info
+log trace "Initialising application. Setting up paths"
+log trace "Script paths has been set to"
+log trace "Current path: $current_path"
+log trace "Script name: $script_name"
+log trace "Script path: $script_path"
+log trace "Script env path: $script_env_path"
+log trace "Self path: $self_path"
 
 function main() {
     # Start main script
