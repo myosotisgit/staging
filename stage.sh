@@ -7,6 +7,8 @@
 #
 # The script is wrapped inside a function to protect against the connection being interrupted
 # in the middle of the stream.
+#
+# Command: curl -L https://github.com/myosotisgit/staging/raw/refs/heads/main/stage.sh | bash -s -h
 
 set -euo pipefail
 
@@ -151,6 +153,14 @@ function setPaths() {
 
 # Executing required function
 setPaths
+
+log trace "Initialising application. Setting up paths"
+log trace "Script paths has been set to"
+log trace "Current path: $current_path"
+log trace "Script name: $script_name"
+log trace "Script path: $script_path"
+log trace "Script env path: $script_env_path"
+log trace "Self path: $self_path"
 
 # ----------------------------------------------
 # Function
@@ -384,6 +394,19 @@ isPackageInstalled() {
 }
 
 # ----------------------------------------------
+# Dry run function
+
+function dryRun() {
+  printf -v cmd_str '%q ' "$@"
+
+  if [[ $dry_run == 'true' ]]; then
+      echo "Dry-run: not executing $cmd_str" >&2
+  else
+      eval "$cmd_str"
+  fi
+}
+
+# ----------------------------------------------
 # Show the intro header when starting script
 
 function showIntro() {
@@ -451,7 +474,7 @@ function usage() {
 # COMMAND LINE OPTIONS
 #*****************************************************************
 
-echo "Received arguments: $@"
+log trace "Received commandline arguments: $@"
 #
 options=$(getopt -o 'fhuv' --long 'dry,trace,debug,info,notice,warning,error,fatal' -n "$0" -- "$@")
 if [ $? -ne 0 ]; then
@@ -536,13 +559,48 @@ while true; do
    esac
 done
 
-log debug "Initialising application. Setting up paths"
-log debug "Script paths has been set to"
-log debug "Current path: $current_path"
-log debug "Script name: $script_name"
-log debug "Script path: $script_path"
-log debug "Script env path: $script_env_path"
-log debug "Self path: $self_path"
+#************************************************************************
+#
+# LARAVEL FORGE FUNCTIONS
+#
+#************************************************************************
+
+# ----------------------------------------------
+# set hostname
+function setHostname() {
+
+  # Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "${FUNCNAME[0]}"
+
+  # Ask user for hostname
+  # Show current hostname
+        if [ -x "$(command -v hostnamectl)" ]; then
+        log info "-- Current hostname: $(hostnamectl hostname)"
+                read -p "Enter the new hostname: " answer
+
+                if [[ "$answer" =~ ^[a-z0-9_-]+$ ]]; then
+                        if [[ "$answer" != $(hostnamectl hostname) ]]; then
+                                #valid hostname
+                                log info "-- Setting hostname to $answer"
+                                dryRun hostnamectl set-hostname "$answer"
+                                log info "-- Adding new hostname to /etc/hosts"
+                                # Update 127.0.0.1 line
+                                dryRun sed -i "s/^127.0.0.1.*/127.0.0.1 $answer.localdomain $answer localhost/" /etc/hosts
+                                # Update ::1 line (optional but recommended for IPv6 consistency)
+                                dryRun sed -i "s/^::1.*/::1 $answer.localdomain $answer ip6-localhost ip6-loopback/" /etc/hosts
+                        else
+                                log warning "-- New and current hostnames are the same. Not changing it"
+                        fi
+                else
+                        log warning "-- The hostname contains invalid characters or spaces. The hostname will not be set"
+                fi
+
+        else
+                log warning "-- hostnamectl command not found. Cannot set the hostname"
+        fi
+
+} # END of function
 
 #************************************************************************
 #
@@ -575,7 +633,7 @@ case $stage_type in
 	;;
 	ubuntu)
 		log info "Staging type is set to $stage_type (default)"
-		#setHostname
+		setHostname
 		#setTimezone
 		#hardenSSH
         #hushMotd
