@@ -17,13 +17,14 @@ version="1.0";
 
 # Run level
 # Value: true (default) false
-# Can be enabled using script arguments
+# Can be disabled using --force commandline argument
 dry_run=true;
 
 # Stage type
 # which type of staging should be executed. Default is "ubuntu"
 # Values: ubuntu, postforge
-stage_type="ubuntu"
+# Default: empty (ask user)
+stage_type=""
 
 # log level
 # values: trace, debug, info, notice (verbose), warning, error, fatal
@@ -38,12 +39,12 @@ log_route="screen"
 
 # Default configuration filename
 config_file="ubstage.conf"
-config_file_sample="ubstage.conf-sample"
+config_file_example="ubstage.conf.example"
 repo_ubstage_folder_name="tooling.git"
 
 # SERVER CONFIG VARIABLES
 # Do not use a trailing slash!
-user_home_dir="/home/forge"
+forge_user_dir="/home/forge"
 
 #*****************************************************************
 # SCRIPT INTERNAL CONSTANTS AND SETTINGS
@@ -107,7 +108,10 @@ logColors["reset"]='\033[0m'    # Reset color
 function chkRoot() {
 	
    if [[ ! "$(whoami)" = "root" ]]; then
-    echo "Error: You must run this script as root"
+    echo "Fatal: This script must be executed with root privileges."
+#*****************************************************************
+# exit 1 # TEMPORARY CONTINUE WITH SCRIPT WHILE TESTEN
+#*****************************************************************
    fi
 } # END of function
 
@@ -148,7 +152,7 @@ function setPaths() {
 # Executing required function
 setPaths
 
-# ----------------------------------------------
+#----------------------------------------------------------
 # Function
 # Check if a given command/application is available.
 # Expects: array of commands (see usedAppsArray)
@@ -170,10 +174,16 @@ done
 # Executing required function
 chkCommands "${usedAppsArray[@]}"
 
-# ----------------------------------------------
+#----------------------------------------------------------
 # Function areYouSure
 function areYouSure() {
-    read -p "Continue (Y/N)? : " answer
+	if [[ -z "$1" ]]; then
+		local prompt="Are you sure you want to continue (Y/N): "
+	else
+		local prompt="$1"
+	fi
+
+    	read -p "$prompt" answer
    case $answer in
       [yY] )
           echo "Continuing with script..."
@@ -383,7 +393,7 @@ if [[ -r "$script_path/$config_file" ]]; then
     if [[ "$ubstage_path" =~ "_DEFAULT" ]]; then
       # User did not change default values. exit
       log warning "The ubstage_path has not been set in $config_file"
-      log error "-> Add your custom values to  $config_file and restart..."
+      log error "-> Add your configuration values to $config_file and try again..."
       exit 0
     fi
 
@@ -410,27 +420,27 @@ if [[ -r "$script_path/$config_file" ]]; then
 
     fi
 
-# ----------------------------------------------
-# Check if Path to Git Repos exists
-if [[ -r "$reposPath" && -d "$reposPath" ]]; then
-   if [[ verbose == "true" ]]; then
-       echo "-- Path to git repositories ($reposPath) is found and is readable"
-   fi
-else
-    echo -e ${logColors["fatal"]}"Fatal: Git repos folder not found at $reposPath"${logColors["reset"]}
-    echo -e ${logColors["notice"]}"Add the correct path to the ubstage repository..."${logColors["reset"]}
-    exit 0
-fi
+  # ----------------------------------------------
+  # Check if Path to Git Repos exists
+  if [[ -r "$reposPath" && -d "$reposPath" ]]; then
+     if [[ verbose == "true" ]]; then
+         echo "-- Path to git repositories ($reposPath) is found and is readable"
+     fi
+  else
+     echo -e ${logColors["fatal"]}"Fatal: Git repos folder not found at $reposPath"${logColors["reset"]}
+     echo -e ${logColors["notice"]}"Add the correct path to the ubstage repository..."${logColors["reset"]}
+     exit 0
+  fi
 
  # Config file was not found ----------------------------------
 else
-    if [[ -e "$script_path/$config_file_sample" ]]; then
+    if [[ -e "$script_path/$config_file_example" ]]; then
       echo -e $red"Fatal: Config file ($config_file) not found in $script_path$colorclear";
-      echo -e $yellow"Info:$colorclear Rename the sample config ($file_config_sample) file, adjust permissions and restart..."
+      echo -e $yellow"Info:$colorclear Rename or copy the example config file to $config_file, add your configuration values and try again..."
       exit 0
     else
-      echo -e $red"Fatal: Sample Config file ($config_file_sample) not found in $script_path$colorclear";
-      echo -e $yellow"Info:$colorclear Reinstall the script and sample configuration";
+      echo -e $red"Fatal: Example Config file ($config_file_example) not found in $script_path$colorclear";
+      echo -e $yellow"Info:$colorclear Reinstall the script and example config file";
       exit 0
     fi
 
@@ -597,11 +607,43 @@ function sectionHeader() {
 
 } # END of function 
 
+# ----------------------------------------------
+# function stageType
+# Ask user to set the stage type when not set through commandline
+function stageType() {
+        # Logging
+        log debug "Started function ${FUNCNAME[0]} "
+
+	if [[ -z "$stage_type" ]]; then
+		# Stage Type was not set
+		echo "Warning: The stage type (forge/ubuntu) was not set on the commandline. Choose the stage type before continuing"
+	
+		read -p "Choose stage type (forge/ubuntu): " answer
+   		case $answer in
+      			forge)
+          		echo "Setting stage type to forge."
+			stage_type="forge"
+        		 ;;
+     			ubuntu)
+          		echo "Setting stage type to ubuntu."
+			stage_type="ubuntu"
+         		;;
+     			* )
+         		echo "Incorrect choice. Try again."
+         		exit 1
+         		;;
+   		esac
+	fi	
+
+} # END of function
+
+
 #*****************************************************************
 # HELP PAGE 
 #*****************************************************************
 function usage() {
   echo "Usage: "$0" [options]"
+  echo "Remark: Dry run mode is enabled by default. To override use --force"
   echo ""
   echo "Options:"
   echo ""
@@ -610,7 +652,7 @@ function usage() {
   echo ""
   echo "Long options:"
   echo ""
-  echo " --dry   Do a dry run without changing data"
+  echo " --force   Disable dry run mode and make permanent changes!"
   echo " --loglevel possible values: trace, debug, info, notice, warning, error, fatal"
   echo " For example 'ubstage.sh --warning'"
         echo ""
@@ -753,7 +795,7 @@ sectionHeader "Allow custom feature branches in git repos"
 log info "Enable custom branches"
 
 # Find folder and add to array git_dirs
-mapfile -t git_dirs < <(find "${user_home_dir}" -name .git -type d -prune)
+mapfile -t git_dirs < <(find "${forge_user_dir}" -name .git -type d -prune)
 
 for d in "${git_dirs[@]}"; do
   echo "Processing directory: $d"
@@ -803,13 +845,13 @@ if [ ! -f /root/.hushlogin ]; then
         dryRun touch /root/.hushlogin
         hushed=1
 fi
-if [ -d "$user_home_dir" ] && [ ! -f "$user_home_dir/.hushlogin" ]; then
-        log info "Disabling message o/t day for $user_home_dir"
-        dryRun touch $user_home_dir/.hushlogin
+if [ -d "$forge_user_dir" ] && [ ! -f "$forge_user_dir/.hushlogin" ]; then
+        log info "Disabling message o/t day for $forge_user_dir"
+        dryRun touch $forge_user_dir/.hushlogin
         hushed++
 fi
 if [ "$hushed" > 0 ]; then
-        log info "Motd messages are hushed"
+        log info "Motd messages are hushed."
 fi
 
 } # END of function
@@ -1052,30 +1094,30 @@ sectionHeader "Rkhunter Check root kit"
     # Check if rkhunter is installed
 		if ! command -v rkhunter &>/dev/null; then
         log info "Installing rkhunter..."
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y rkhunter 
+        dryRun sudo DEBIAN_FRONTEND=noninteractive apt-get install -y rkhunter 
         log info "Installing mailutils..."
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mailutils
+        dryRun sudo DEBIAN_FRONTEND=noninteractive apt-get install -y mailutils
     else
         log info "rkhunter is already installed. Configuring it"
     fi
 		
 	 if grep -q "^MAIL-ON-WARNING" /etc/rkhunter.conf; then
-        sudo sed -i "s/^MAIL-ON-WARNING=.*/MAIL-ON-WARNING=\"$email\"/" /etc/rkhunter.conf
+        dryRun sudo sed -i "s/^MAIL-ON-WARNING=.*/MAIL-ON-WARNING=\"$email\"/" /etc/rkhunter.conf
     else
-        echo "MAIL-ON-WARNING=\"$email\"" | sudo tee -a /etc/rkhunter.conf
+        dryRun echo "MAIL-ON-WARNING=\"$email\"" | sudo tee -a /etc/rkhunter.conf
     fi
 
     log info "Setting up daily scan"
-    echo "0 3 * * * root /usr/bin/rkhunter --check --sk --report-warnings-only | mail -s 'rkhunter Security Scan Report' $email" | sudo tee /etc/cron.d/rkhunter_scan
+    dryRun echo "0 3 * * * root /usr/bin/rkhunter --check --sk --report-warnings-only | mail -s 'rkhunter Security Scan Report' $email" | sudo tee /etc/cron.d/rkhunter_scan
 
 # Function to create daily update cron job
     log info "Setting up daily updates"
-    echo "0 2 * * * root /usr/bin/rkhunter --update && /usr/bin/rkhunter --propupd" | sudo tee /etc/cron.d/rkhunter_update
+    dryRun echo "0 2 * * * root /usr/bin/rkhunter --update && /usr/bin/rkhunter --propupd" | sudo tee /etc/cron.d/rkhunter_update
 
 # Function to run initial update and scan
     log info "Updating rkhunter and running initial scan..."
-    sudo rkhunter --update
-    sudo rkhunter --propupd
+    dryRun sudo rkhunter --update
+    dryRun sudo rkhunter --propupd
     log warning "Run sudo rkhunter --check --sk for a complete rootkit scan"
 
 	log info "Rkhunter rootkit checker installed and configured."
@@ -1094,16 +1136,16 @@ function setupLynis() {
   sectionHeader "Lynis System and rootkit checker"
 
 
-curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/cisofy-software-public.gpg echo "deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
-echo "deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
+dryRun curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/cisofy-software-public.gpg echo "deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
+dryRun echo "deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
 
-apt install apt-transport-https
-echo 'Acquire::Languages "none";' | sudo tee /etc/apt/apt.conf.d/99disable-translations
-echo "deb https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
-apt update
-apt install lynis
+dryRun apt install apt-transport-https
+dryRun echo 'Acquire::Languages "none";' | sudo tee /etc/apt/apt.conf.d/99disable-translations
+dryRun echo "deb https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
+dryRun apt update
+dryRun apt install lynis
 log info "Lynis is installed. Checking version"
-lynis show version
+dryRun lynis show version
 log warning "Run 'lynis audit system' to scan the whole system"
 
 } # END of function
@@ -1118,7 +1160,8 @@ log warning "Run 'lynis audit system' to scan the whole system"
 function main() {
     # Start main script
     showIntro
-    areYouSure
+    areYouSure "Are you sure? (Y/N): "
+    stageType
 
 case $stage_type in
 	forge)
