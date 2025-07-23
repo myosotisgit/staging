@@ -109,9 +109,7 @@ function chkRoot() {
 	
    if [[ ! "$(whoami)" = "root" ]]; then
     echo "Fatal: This script must be executed with root privileges."
-#*****************************************************************
-# exit 1 # TEMPORARY CONTINUE WITH SCRIPT WHILE TESTEN
-#*****************************************************************
+    exit 1
    fi
 } # END of function
 
@@ -553,14 +551,25 @@ function addFileIfNotExists() {
 # Dry run function
 
 function dryRun() {
+ # Logging
+    log debug "-- Started function ${FUNCNAME[0]} "
+
   printf -v cmd_str '%q ' "$@"
 
-  if [[ $dry_run == 'true' ]]; then
+  case "$dry_run" in
+    true)
       echo "Dry-run: not executing $cmd_str" >&2
-  else
+      ;;
+    false)
+      echo "Running: $cmd_str" >&2
       eval "$cmd_str"
-  fi
-}
+      ;;
+    *)
+    log warning "The dry_run variable is not set correctly ($dry_run). This indicates a coding error."
+      ;;
+  esac
+} # END of function
+
 
 # ----------------------------------------------
 # Show the intro header when starting script
@@ -572,8 +581,8 @@ function showIntro() {
         echo "$(colorYellow '----------------------------------------------')"
         echo "$(colorYellow ' Ubuntu staging script')"
         echo "$(colorYellow ' Version: ')$version";
-        if [ $dry_run = true ]; then 
-                echo "$(colorYellow ' Dry run:') enabled" 
+        if [ $dry_run = false ]; then 
+                echo "$(colorRed ' Dry run mode is disabled!! Changes will be permanent!')" 
         fi;
         echo "$(colorYellow ' Staging type: ')$stage_type";
         echo "$(colorYellow ' Description:')";
@@ -602,7 +611,7 @@ function sectionHeader() {
         header_title="$1"
         fi
         echo "$(colorYellow '----------------------------------------------')"
-        echo "$header_title"
+        echo " $header_title"
         echo "$(colorYellow '----------------------------------------------')"
 
 } # END of function 
@@ -663,7 +672,7 @@ function usage() {
 #*****************************************************************
 
 #
-options=$(getopt -o 'fhuv' --long 'dry,trace,debug,info,notice,warning,error,fatal' -n "$0" -- "$@")
+options=$(getopt -o 'fhuv' --long 'dry,force,trace,debug,info,notice,warning,error,fatal' -n "$0" -- "$@")
 if [ $? -ne 0 ]; then
     # if getopt returns a non-zero status there was an error
     usage
@@ -704,6 +713,11 @@ while true; do
            shift
            continue
        ;;
+	'--force')
+	  dry_run="false"
+	  shift
+	  continue
+	  ;;
        '--trace')
            user_log_level="trace"
            shift
@@ -830,7 +844,10 @@ done
 # Function
 # Limit the journal logs to a maximum size
 function setMaxSizeJournal() {
-    journalctl --vacuum-size=2G
+	# Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "${FUNCNAME[0]}"
+    dryRun journalctl --vacuum-size=2G
 }
 
 #-----------------------------------------------
@@ -889,8 +906,8 @@ TARGET_FILE="/etc/apt/apt.conf.d/50unattended-upgrades"  # File to check and rep
 dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
 
 # Check if unattended upgrades are working
-log info "Checking if Unattended-updrades are working. Dry-run. Check the input"
-unattended-upgrades --dry-run --verbose
+log info "Checking if Unattended-upgrades are working. Dry-run. Check the input"
+sudo unattended-upgrades --dry-run --verbose
 
 } # END of function
 
@@ -931,9 +948,9 @@ if [[ "$password_auth_value" == "$req_password_auth" && "$permit_root_check" == 
         log info "SSH is already hardened."
 else
     log info "SSH is not hardened. Adding new configuration."
-    # Define file paths
-    SOURCE_FILE="${current_path}/assets/90-postforge.conf"  # Your version in assets/
-    TARGET_FILE="/etc/ssh/sshd_config.d/90-postforge.conf"  # File to check and replace
+    # Define file paths depending on stage_type
+    SOURCE_FILE="${current_path}/assets/90-ubstage-$stage_type.conf"  # Your version in assets/
+    TARGET_FILE="/etc/ssh/sshd_config.d/90-ubstage-$stage_type.conf"  # File to check and replace
 
     # Call the function
     dryRun addFileIfNotExists "$SOURCE_FILE" "$TARGET_FILE"
@@ -951,15 +968,33 @@ function setHostname() {
   log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "${FUNCNAME[0]}"
 
+  local change_hostname=false
+
   # Ask user for hostname
   # Show current hostname
         if [ -x "$(command -v hostnamectl)" ]; then
         log info "-- Current hostname: $(hostnamectl hostname)"
-                read -p "Enter the new hostname: " answer
+		read -p "Do you want to set a new hostname: (Y/N): " answer
+		case $answer in
+      			[yY] )
+          		echo "You want to change the hostname..."
+			change_hostname=true
+         		;;
+     			[nN] )
+         		echo "Not changing the hostname"
+         		;;
+     			* )
+         		echo "Incorrect choice. Choose Y/N next time... "
+         		exit 1
+         		;;
+   		esac
 
-                if [[ "$answer" =~ ^[a-z0-9_-]+$ ]]; then
+	if [[ "$change_hostname" == true ]]; then
+		read -p "Enter the new hostname (without spaces and special characters!): " answer
+		if [[ "$answer" =~ ^[a-zA-Z0-9_-]+$ ]]; then
                         if [[ "$answer" != $(hostnamectl hostname) ]]; then
                                 #valid hostname
+				echo "dry run: $dry_run"
                                 log info "-- Setting hostname to $answer"
                                 dryRun hostnamectl set-hostname "$answer"
                                 log info "-- Adding new hostname to /etc/hosts"
@@ -973,10 +1008,11 @@ function setHostname() {
                 else
                         log warning "-- The hostname contains invalid characters or spaces. The hostname will not be set"
                 fi
+	fi # END of change_hostname check
 
         else
                 log warning "-- hostnamectl command not found. Cannot set the hostname"
-        fi
+        fi # END of hostnamectl check
 
 } # END of function
 
@@ -1167,30 +1203,31 @@ case $stage_type in
 	forge)
 		log info "Staging type is set to $stage_type"
 		# Ubuntu business
-        #hardenSSH
-		#setMaxSizeJournal
-        #configUnattendedUpgrades
-        #installNtpsec
-		#hushMotd
-        # Applications
-        #setupRkhunter tech@myosotis-ict.nl
-        setupLynis
+		# hostname is set by forge during install
+        	hardenSSH
+		setMaxSizeJournal
+        	configUnattendedUpgrades
+        	installNtpsec
+		hushMotd
+        	# Applications
+        	setupRkhunter tech@myosotis-ict.nl
+        	setupLynis
 		# forge business
-		#addFirewallRulesForge
-		#customGitBranches
+		addFirewallRulesForge
+		customGitBranches
         
 	;;
 	ubuntu)
 		log info "Staging type is set to $stage_type (default)"
-		#setHostname
-		#setTimezone
-		#hardenSSH
-        #hushMotd
-		#configUnattendedUpgrades
-        #setMaxSizeJournal
-		#installNtpsec
-        # Applications
-        #setupRkhunter tech@myosotis-ict.nl
+		setHostname
+		setTimezone
+		hardenSSH
+        	hushMotd
+		configUnattendedUpgrades
+        	setMaxSizeJournal
+		installNtpsec
+        	# Applications
+        	setupRkhunter tech@myosotis-ict.nl
 		setupLynis
 	;;
 esac
