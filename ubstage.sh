@@ -931,7 +931,9 @@ function hardenSSH() {
 sectionHeader "Hardening SSH"
 
 # Check if config dir exists (it should)
-if [ ! -d /etc/ssh/sshd_config.d ]; then mkdir /etc/ssh/sshd_config.d; fi
+if [ ! -d /etc/ssh/sshd_config.d ]; then 
+	dryRun mkdir /etc/ssh/sshd_config.d 
+fi
 
 # Check config
 # Extract values
@@ -939,7 +941,7 @@ password_auth_value=$(sshd -G | awk '/^passwordauthentication/ {print $2}')
 permit_root_login=$(sshd -G | awk '/^permitrootlogin/ {print $2}')
 banner=$(sshd -G | awk '/^banner/ {print $2}')
 
-log debug "ssh hardening config: PasswordAuthentication $password_auth_value, PermietRootLogin $permit_root_login, Banner $banner"
+log debug "ssh hardening config: PasswordAuthentication $password_auth_value, PermitRootLogin $permit_root_login, Banner $banner"
 
 # Required sshd values
 req_password_auth="no"
@@ -966,7 +968,7 @@ else
     # Call the function
     dryRun addFileIfNotExists "$SOURCE_FILE" "$TARGET_FILE"
     log info "Added new ssh config. Restarting ssh"
-    service ssh restart
+    dryRun service ssh restart
 fi
 
 } # END of function
@@ -1242,10 +1244,10 @@ case $stage_type in
 	forge)
 		log info "Staging type is set to $stage_type"
 		# Ubuntu business
-		setTimezone
+		#setTimezone
 		# hostname is set by forge during install
-		setHostname
-        	#hardenSSH
+		#setHostname
+        	hardenSSH
 		#setMaxSizeJournal
         	#configUnattendedUpgrades
         	#installNtpsec

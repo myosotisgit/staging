@@ -1,0 +1,4 @@
+# Managed by ubstage.sh
+PasswordAuthentication no
+Banner no
+PermitRootLogin without-password
