@@ -549,6 +549,25 @@ function addFileIfNotExists() {
 
 # ----------------------------------------------
 # Dry run function
+#  This function is used to execute commands in dry-run mode.
+#  It will print or run the command
+#  If dry_run is true, it will only print the command.
+ 
+#  Usage: dryRun <command> [arguments...]
+ 
+#  Example 1: Your original command with a pipe.
+# We pass the full command and its parts as separate arguments.
+# This is the correct way to handle commands with pipes.
+# run_cmd bash -c "echo '0 3 * * * root /usr/bin/rkhunter --check --sk --report-warnings-only | mail -s 'rkhunter Security Scan Report' $email' | sudo tee /etc/cron.d/rkhunter_scan"
+
+# Example 2: A simple command.
+# run_cmd cp -v /path/to/source /path/to/destination
+
+# Example 3: A command with redirects.
+# run_cmd find . -name "*.log" -exec rm {} \;
+
+# Example 4: A command that needs root privileges.
+# run_cmd sudo systemctl restart nginx.service
 
 function dryRun() {
     # If in dry-run mode, just print the command.
