@@ -572,12 +572,12 @@ function addFileIfNotExists() {
 function dryRun() {
     # If in dry-run mode, just print the command.
     if [ "$dry_run" = "true" ]; then
-        echo "DRY-RUN MODE: The following command would be executed:"
+        echo "-- Dry run mode enabled: The following command would be executed:"
         printf "  %s\n" "$*"
     else
         # Otherwise, execute the command.
         # This uses "$@" to expand the arguments correctly.
-        echo "Executing command..."
+	echo "Executing command(s)..."
         "$@"
     fi
 } # END of function
@@ -985,6 +985,7 @@ function setHostname() {
   # Show current hostname
         if [ -x "$(command -v hostnamectl)" ]; then
         log info "-- Current hostname: $(hostnamectl hostname)"
+		colorRed "Warning: Forge sets the hostname when provisioning the server. It is not recommended to change the hostname using this script with Forge servers"
 		read -p "Do you want to set a new hostname: (Y/N): " answer
 		case $answer in
       			[yY] )
@@ -1005,7 +1006,6 @@ function setHostname() {
 		if [[ "$answer" =~ ^[a-zA-Z0-9_-]+$ ]]; then
                         if [[ "$answer" != $(hostnamectl hostname) ]]; then
                                 #valid hostname
-				echo "dry run: $dry_run"
                                 log info "-- Setting hostname to $answer"
                                 dryRun hostnamectl set-hostname "$answer"
                                 log info "-- Adding new hostname to /etc/hosts"
@@ -1030,34 +1030,59 @@ function setHostname() {
 # ----------------------------------------------
 # Set server timezone
 function setTimezone() {
+    log debug "-- Started function ${FUNCNAME[0]}"
+    sectionHeader "Set Timezone"
 
-  # Logging
-  log debug "-- Started function ${FUNCNAME[0]} "
-  sectionHeader "${FUNCNAME[0]}"
+    if ! command -v timedatectl &> /dev/null; then
+        log warning "The timedatectl command is not available. Cannot set the timezone."
+        return 1
+    fi
 
-        if [[ -x "$(command -v timedatectl)" ]]; then
+    # Loop 1: Ask for confirmation to continue
     while true; do
-        log info "-- Current timezone: $(timedatectl show --property=Timezone --value)"
+        log warning "It is strongly recommended to set the server timezone in Forge. Are you sure you want to continue?"
+        read -p "Continue? (Y/N): " answer
+        case "$answer" in
+            [yY])
+                echo "Continuing..."
+                break # Exit the confirmation loop
+                ;;
+            [nN])
+                echo "Aborting timezone change..."
+                log debug "-- Aborted function ${FUNCNAME[0]}"
+                return 0 # Exit the function
+                ;;
+            *)
+                echo "Incorrect choice. Please choose Y or N."
+                ;;
+        esac
+    done
+
+    log info "-- Current timezone: $(timedatectl show --property=Timezone --value)"
+
+    local TIMEZONE
+    # Loop 2: Ask for a valid timezone
+    while true; do
         read -p "Enter the new timezone (e.g., Europe/London): " TIMEZONE
 
-        # Check if the exact timezone exists
-        if timedatectl list-timezones | grep -qx "$TIMEZONE"; then
-            break
+        # Check if the entered timezone is a valid one
+        if timedatectl list-timezones | grep -q "^$TIMEZONE$"; then
+            log info "Valid timezone '$TIMEZONE' entered."
+            break # Exit the timezone validation loop
         fi
 
         # Try to suggest a timezone if user entered a partial name
         SUGGESTION=$(timedatectl list-timezones | grep -i "/$TIMEZONE$" | head -n 1)
-        
         if [[ -n "$SUGGESTION" ]]; then
-            echo "Did you mean: $SUGGESTION?"
+            echo "Invalid timezone '$TIMEZONE'. Did you mean: '$SUGGESTION'?"
         else
-            echo "Invalid timezone. Please check available timezones using: timedatectl list-timezones"
+            echo "Invalid timezone. Please check available timezones using: 'timedatectl list-timezones'"
         fi
     done
-        else
-    log warning "The timedatectl command is not available. Cannot set the timezone."
-        fi
 
+    # Final confirmation before making changes
+    read -p "Are you sure you want to set the timezone to '$TIMEZONE'? (Y/N): " final_answer
+    if [[ "$final_answer" =~ ^[Yy]$ ]]; then
         # Set the timezone using timedatectl
         dryRun timedatectl set-timezone "$TIMEZONE"
 
@@ -1067,8 +1092,11 @@ function setTimezone() {
         log warning "-- Updating the timezone will NOT update the timezone on Laravel Forge dashboard"
         log warning "-- Laravel forge does NOT adjust /etc/timezone!"
         log info "-- Timezone successfully updated to $TIMEZONE."
+    else
+        echo "Aborting timezone change..."
+    fi
 
-} # END of function
+}
 
 # ----------------------------------------------
 # Install NTPsec
@@ -1214,7 +1242,9 @@ case $stage_type in
 	forge)
 		log info "Staging type is set to $stage_type"
 		# Ubuntu business
+		setTimezone
 		# hostname is set by forge during install
+		setHostname
         	#hardenSSH
 		#setMaxSizeJournal
         	#configUnattendedUpgrades
