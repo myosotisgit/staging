@@ -925,51 +925,81 @@ sudo unattended-upgrades --dry-run --verbose
 
 #-----------------------------------------------
 # Function
-# Extending the sshd config if not available
-
+#
+# Checks the effective sshd configuration and applies a hardening configuration if needed.
+#
 function hardenSSH() {
-sectionHeader "Hardening SSH"
+    sectionHeader "Hardening SSH"
 
-# Check if config dir exists (it should)
-if [ ! -d /etc/ssh/sshd_config.d ]; then 
-	dryRun mkdir /etc/ssh/sshd_config.d 
-fi
+    # Define required values and use local variables to avoid polluting the global scope
+    local req_password_auth="no"
+    local req_banner="none"
+    local -A ssh_config # Use an associative array to store config values
 
-# Check config
-# Extract values
-password_auth_value=$(sshd -G | awk '/^passwordauthentication/ {print $2}')
-permit_root_login=$(sshd -G | awk '/^permitrootlogin/ {print $2}')
-banner=$(sshd -G | awk '/^banner/ {print $2}')
+    # --- Step 1: Efficiently get all config values at once ---
+    # Run sshd -G once and parse its output into an associative array.
+    # This is far more efficient than running it multiple times.
+    while read -r key value _; do
+        # sshd -G outputs keys in lowercase
+        ssh_config["$key"]="$value"
+    done < <(sshd -G 2>/dev/null) # Redirect stderr to hide potential warnings
 
-log debug "ssh hardening config: PasswordAuthentication $password_auth_value, PermitRootLogin $permit_root_login, Banner $banner"
+    # For debugging, show the values we found
+    log debug "Effective SSH Config: PasswordAuthentication=${ssh_config[passwordauthentication]}, PermitRootLogin=${ssh_config[permitrootlogin]}, Banner=${ssh_config[banner]}"
 
-# Required sshd values
-req_password_auth="no"
-req_banner="none"
-# Check if PermitRootLogin is an acceptable value
-case "$permit_root_login" in
-    no|prohibit-password|without-password|forced-command)
-        permit_root_check=true
-        ;;
-    *)
-        permit_root_check=false
-        ;;
-esac
+    # --- Step 2: Check if SSH is already hardened using a guard clause ---
+    # This makes the logic cleaner. If it's already compliant, we just say so and exit.
+    local permit_root_ok=false
 
-# Check all conditions
-if [[ "$password_auth_value" == "$req_password_auth" && "$permit_root_check" == true && "$banner" == "$req_banner" ]]; then
+    if [[ "$stage_type" == "ubuntu" ]]; then
+     # For Ubuntu, be strict: only "no" is acceptable.
+     log debug "Ubuntu stage: Verifying PermitRootLogin is strictly 'no'."
+     if [[ "${ssh_config[permitrootlogin]}" == "no" ]]; then
+        permit_root_ok=true
+     fi
+    else
+     # For other stages, use the broader set of secure values.
+     log debug "Non-Ubuntu stage: Verifying PermitRootLogin against multiple secure values."
+     case "${ssh_config[permitrootlogin]}" in
+        no|prohibit-password|without-password|forced-commands)
+            permit_root_ok=true
+            ;;
+     esac
+    fi
+
+    if [[ "${ssh_config[passwordauthentication]}" == "$req_password_auth" && \
+          "$permit_root_ok" == true && \
+          "${ssh_config[banner]}" == "$req_banner" ]]; then
         log info "SSH is already hardened."
-else
-    log info "SSH is not hardened. Adding new configuration."
-    # Define file paths depending on stage_type
-    SOURCE_FILE="${current_path}/assets/90-ubstage-$stage_type.conf"  # Your version in assets/
-    TARGET_FILE="/etc/ssh/sshd_config.d/90-ubstage-$stage_type.conf"  # File to check and replace
+        return 0 # Success, no changes needed
+    fi
 
-    # Call the function
-    dryRun addFileIfNotExists "$SOURCE_FILE" "$TARGET_FILE"
-    log info "Added new ssh config. Restarting ssh"
-    dryRun service ssh restart
-fi
+    # --- Step 3: If not hardened, apply the new configuration ---
+    log info "SSH is not hardened. Applying new configuration."
+
+    # Ensure the config drop-in directory exists. Using -p is safer.
+    if [[ ! -d "/etc/ssh/sshd_config.d" ]]; then
+	log debug "SSH config dir /etc/ssh/sshd_config.d does not exists. Creating it"
+    	dryRun mkdir -p /etc/ssh/sshd_config.d
+    else
+	log debug "SSH config dir /etc/ssh/sshd_config.d exists. Config files can be added there"
+    fi
+
+    # Define source and target file paths
+    local source_file="${current_path}/assets/90ubstage-$stage_type"
+    local target_file="/etc/ssh/sshd_config.d/90ubstage-$stage_type"
+
+    # Add the file and restart the service
+    dryRun addFileIfNotExists "$source_file" "$target_file"
+    log info "Added new SSH config. Restarting SSH service..."
+
+    # Use systemctl if available; otherwise, fall back to the older 'service' command.
+    # Also, the service is often named 'sshd' on systemd systems.
+    if command -v systemctl &>/dev/null; then
+        dryRun systemctl restart sshd
+    else
+        dryRun service ssh restart
+    fi
 
 } # END of function
 
@@ -1262,9 +1292,9 @@ case $stage_type in
 	;;
 	ubuntu)
 		log info "Staging type is set to $stage_type (default)"
-		setHostname
-		setTimezone
-		#hardenSSH
+		#setHostname
+		#setTimezone
+		hardenSSH
         	#hushMotd
 		#configUnattendedUpgrades
         	#setMaxSizeJournal
