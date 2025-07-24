@@ -357,7 +357,7 @@ function log() {
     if [[ "$log_route_local" == "file" && "$log_file_name_path" ]]; then
       echo -e $logcolor"${log_level_arg}: ${log_message}"${logColors["reset"]} >>"$log_file_name_path"
     else
-      echo -e $logcolor"${log_level_arg}: ${log_message}"${logColors["reset"]}
+      echo -e $logcolor"${log_level_arg}: ${log_message}"${logColors["reset"]} >&2
     fi
 
     # Exit app when log level is 'error' or 'fatal'
@@ -365,7 +365,7 @@ function log() {
       if [[ "$log_route_local" == "file" ]]; then
          echo -e $logcolor"${log_level_arg} error occured. Exiting program..."${logColors["reset"]} >>"$log_file_name_path"
       else
-         echo -e $logcolor"${log_level_arg} error occured. Exiting program..."${logColors["reset"]}
+         echo -e $logcolor"${log_level_arg} error occured. Exiting program..."${logColors["reset"]} >&2
       fi
       exit 1
     fi
@@ -551,25 +551,17 @@ function addFileIfNotExists() {
 # Dry run function
 
 function dryRun() {
- # Logging
-    log debug "-- Started function ${FUNCNAME[0]} "
-
-  printf -v cmd_str '%q ' "$@"
-
-  case "$dry_run" in
-    true)
-      echo "Dry-run: not executing $cmd_str" >&2
-      ;;
-    false)
-      echo "Running: $cmd_str" >&2
-      eval "$cmd_str"
-      ;;
-    *)
-    log warning "The dry_run variable is not set correctly ($dry_run). This indicates a coding error."
-      ;;
-  esac
+    # If in dry-run mode, just print the command.
+    if [ "$dry_run" = "true" ]; then
+        echo "DRY-RUN MODE: The following command would be executed:"
+        printf "  %s\n" "$*"
+    else
+        # Otherwise, execute the command.
+        # This uses "$@" to expand the arguments correctly.
+        echo "Executing command..."
+        "$@"
+    fi
 } # END of function
-
 
 # ----------------------------------------------
 # Show the intro header when starting script
@@ -1051,7 +1043,7 @@ function setTimezone() {
         dryRun timedatectl set-timezone "$TIMEZONE"
 
         # Manually update /etc/timezone
-        dryRun echo "$TIMEZONE" | sudo tee /etc/timezone > /dev/null
+        dryRun bash -c "echo \"$TIMEZONE\" | sudo tee /etc/timezone > /dev/null"
 
         log warning "-- Updating the timezone will NOT update the timezone on Laravel Forge dashboard"
         log warning "-- Laravel forge does NOT adjust /etc/timezone!"
@@ -1140,15 +1132,15 @@ sectionHeader "Rkhunter Check root kit"
 	 if grep -q "^MAIL-ON-WARNING" /etc/rkhunter.conf; then
         dryRun sudo sed -i "s/^MAIL-ON-WARNING=.*/MAIL-ON-WARNING=\"$email\"/" /etc/rkhunter.conf
     else
-        dryRun echo "MAIL-ON-WARNING=\"$email\"" | sudo tee -a /etc/rkhunter.conf
+        dryRun bash -c "echo \"MAIL-ON-WARNING=\"$email\"\" | sudo tee -a /etc/rkhunter.conf"
     fi
 
     log info "Setting up daily scan"
-    dryRun echo "0 3 * * * root /usr/bin/rkhunter --check --sk --report-warnings-only | mail -s 'rkhunter Security Scan Report' $email" | sudo tee /etc/cron.d/rkhunter_scan
+    dryRun bash -c "echo \"0 3 * * * root /usr/bin/rkhunter --check --sk --report-warnings-only | mail -s 'rkhunter Security Scan Report' $email\" | sudo tee /etc/cron.d/rkhunter_scan"
 
 # Function to create daily update cron job
     log info "Setting up daily updates"
-    dryRun echo "0 2 * * * root /usr/bin/rkhunter --update && /usr/bin/rkhunter --propupd" | sudo tee /etc/cron.d/rkhunter_update
+    dryRun bash -c "echo \"0 2 * * * root /usr/bin/rkhunter --update && /usr/bin/rkhunter --propupd\" | sudo tee /etc/cron.d/rkhunter_update"
 
 # Function to run initial update and scan
     log info "Updating rkhunter and running initial scan..."
@@ -1172,12 +1164,12 @@ function setupLynis() {
   sectionHeader "Lynis System and rootkit checker"
 
 
-dryRun curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/cisofy-software-public.gpg echo "deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
-dryRun echo "deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
+dryRun bash -c "curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/cisofy-software-public.gpg echo \"deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
+dryRun bash -c "echo \"deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
 
 dryRun apt install apt-transport-https
-dryRun echo 'Acquire::Languages "none";' | sudo tee /etc/apt/apt.conf.d/99disable-translations
-dryRun echo "deb https://packages.cisofy.com/community/lynis/deb/ stable main" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list
+dryRun bash -c "echo 'Acquire::Languages \"none\";' | sudo tee /etc/apt/apt.conf.d/99disable-translations"
+dryRun bash -c "echo \"deb https://packages.cisofy.com/community/lynis/deb/ stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
 dryRun apt update
 dryRun apt install lynis
 log info "Lynis is installed. Checking version"
@@ -1204,31 +1196,31 @@ case $stage_type in
 		log info "Staging type is set to $stage_type"
 		# Ubuntu business
 		# hostname is set by forge during install
-        	hardenSSH
-		setMaxSizeJournal
-        	configUnattendedUpgrades
-        	installNtpsec
-		hushMotd
+        	#hardenSSH
+		#setMaxSizeJournal
+        	#configUnattendedUpgrades
+        	#installNtpsec
+		#hushMotd
         	# Applications
-        	setupRkhunter tech@myosotis-ict.nl
-        	setupLynis
+        	#setupRkhunter tech@myosotis-ict.nl
+        	#setupLynis
 		# forge business
-		addFirewallRulesForge
-		customGitBranches
+		#addFirewallRulesForge
+		#customGitBranches
         
 	;;
 	ubuntu)
 		log info "Staging type is set to $stage_type (default)"
 		setHostname
 		setTimezone
-		hardenSSH
-        	hushMotd
-		configUnattendedUpgrades
-        	setMaxSizeJournal
-		installNtpsec
+		#hardenSSH
+        	#hushMotd
+		#configUnattendedUpgrades
+        	#setMaxSizeJournal
+		#installNtpsec
         	# Applications
-        	setupRkhunter tech@myosotis-ict.nl
-		setupLynis
+        	#setupRkhunter tech@myosotis-ict.nl
+		#setupLynis
 	;;
 esac
 
