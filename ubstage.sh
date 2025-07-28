@@ -1236,7 +1236,21 @@ sectionHeader "Rkhunter Check root kit"
     log info "Updating rkhunter and running initial scan..."
     dryRun sudo rkhunter --update
     dryRun sudo rkhunter --propupd
-    log warning "Run sudo rkhunter --check --sk for a complete rootkit scan"
+    
+    read -p "You want to run a full rootkit scan (about 4 minutes)? (Y/N)" answer
+   case $answer in
+      [yY] )
+	      log info "Running RKhunster full rootkit check"
+    	rkhunter --check --sk
+         ;;
+     [nN] )
+         echo "Skipping full rootkit check"
+         ;;
+     * )
+         echo "Incorrect choice. SKipping full rootkit check... "
+         exit 1
+         ;;
+   esac
 
 	log info "Rkhunter rootkit checker installed and configured."
 	log info "Cron script installed for updating and regular rootkit check. See /etc/cron.d"
@@ -1292,9 +1306,9 @@ case $stage_type in
 		#setMaxSizeJournal # tested
         	#configUnattendedUpgrades #tested
         	#installNtpsec #tested
-		hushMotd
+		#hushMotd #tested
         	# Applications
-        	#setupRkhunter tech@myosotis-ict.nl
+        	setupRkhunter tech@myosotis-ict.nl
         	#setupLynis
 		# forge business
 		#addFirewallRulesForge
@@ -1306,7 +1320,7 @@ case $stage_type in
 		#setHostname # Tested
 		#setTimezone # Tested
 		#hardenSSH # Tested
-        	#hushMotd
+        	#hushMotd #tested
 		#configUnattendedUpgrades #tested
         	#setMaxSizeJournal
 		#installNtpsec #tested
