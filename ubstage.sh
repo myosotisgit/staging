@@ -813,6 +813,21 @@ for t in ${whitelistForgeIp[@]}; do
         dryRun ufw allow from $t to any port 22 comment "Laravel Forge $t"
 done
 
+if sudo ufw status | grep -qE '^22/tcp\s+ALLOW\s+Anywhere'; then
+    echo "Found Forge firewall rule for port 22 to any. Removing it for security purposes."
+    dryRun sudo ufw delete allow 22/tcp
+else
+    echo "The default Forge firewall rule for port 22 was not found."
+fi
+
+# Remove IPv6 allow rule for port 22 (must use "v6" notation)
+if sudo ufw status | grep -qE '^22/tcp \(v6\)\s+ALLOW\s+Anywhere \(v6\)'; then
+    echo "Found Forge firewall rule for port 22 to any. Removing it for security purposes."
+    dryRun sudo ufw delete allow 22/tcp
+else
+    echo "The default Forge firewall rula for port 22 was not found."
+fi
+
 } # END of function
 
 #------------------------------------------------
@@ -1321,10 +1336,10 @@ case $stage_type in
         	#installNtpsec #tested
 		#hushMotd #tested
         	# Applications
-        	#setupRkhunter tech@myosotis-ict.nl
-        	setupLynis
+        	#setupRkhunter tech@myosotis-ict.nl #tested
+        	#setupLynis #tested
 		# forge business
-		#addFirewallRulesForge
+		addFirewallRulesForge
 		#customGitBranches
         
 	;;
