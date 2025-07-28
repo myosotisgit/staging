@@ -1267,9 +1267,8 @@ function setupLynis() {
   log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "Lynis System and rootkit checker"
 
-
-dryRun bash -c "curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/cisofy-software-public.gpg echo \"deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
-dryRun bash -c "echo \"deb [arch=amd64,arm64 signed-by=/etc/apt/trusted.gpg.d/cisofy-software-public.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
+dryRun bash -c "curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /usr/share/keyrings/lynis.gpg"
+dryRun bash -c "echo \"deb [signed-by=/usr/share/keyrings/lynis.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
 
 dryRun apt install apt-transport-https
 dryRun bash -c "echo 'Acquire::Languages \"none\";' | sudo tee /etc/apt/apt.conf.d/99disable-translations"
@@ -1278,7 +1277,21 @@ dryRun apt update
 dryRun apt install lynis
 log info "Lynis is installed. Checking version"
 dryRun lynis show version
-log warning "Run 'lynis audit system' to scan the whole system"
+    read -p "You want to run a full Lynis scan (about 2 minutes)? (Y/N)" answer
+   case $answer in
+      [yY] )
+	      log info "Running Lynis audit scan"
+	      log info "A typical Lynis end score is about 63"
+    		lynis audit system
+         ;;
+     [nN] )
+         echo "Skipping lynis scan"
+         ;;
+     * )
+         echo "Incorrect choice. Skipping full lynis scan... "
+         exit 1
+         ;;
+   esac
 
 } # END of function
 
@@ -1308,8 +1321,8 @@ case $stage_type in
         	#installNtpsec #tested
 		#hushMotd #tested
         	# Applications
-        	setupRkhunter tech@myosotis-ict.nl
-        	#setupLynis
+        	#setupRkhunter tech@myosotis-ict.nl
+        	setupLynis
 		# forge business
 		#addFirewallRulesForge
 		#customGitBranches
