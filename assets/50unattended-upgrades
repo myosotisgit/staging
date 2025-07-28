@@ -1,5 +1,4 @@
-# Managed by PostForge
-# Edited for ubstage
+# Managed by ubstage.sh
 Unattended-Upgrade::Allowed-Origins {
         "${distro_id}:${distro_codename}";
         "${distro_id}:${distro_codename}-security";

@@ -519,12 +519,20 @@ function replaceFileIfExists() {
 
     local source_file="$1"
     local target_file="$2"
+    log debug "Source: $source_file"
+    log debug "Target: $target_file"
 
-    if [[ -f "$target_file" ]]; then
+    if [[ ! -e "$source_file" ]]; then
+	    log fatal "Source file $source_file is not available"
+    else
+	log debug "Found source file: $source_file"
+    fi
+    if [[ -e "$target_file" ]]; then
         log info "Replacing $target_file with $source_file..."
         cp -f "$source_file" "$target_file"
-        log info "Replacement complete."
+        log info "Replacing $target_file is complete."
     else
+	log debug "Target file: $target_file not found. Not replacing it"
         log warn "Target file $target_file does not exist. No action taken."
     fi
 } # END of function
@@ -592,9 +600,6 @@ function showIntro() {
         echo "$(colorYellow '----------------------------------------------')"
         echo "$(colorYellow ' Ubuntu staging script')"
         echo "$(colorYellow ' Version: ')$version";
-        if [ $dry_run = false ]; then 
-                echo "$(colorRed ' Dry run mode is disabled!! Changes will be permanent!')" 
-        fi;
         echo "$(colorYellow ' Staging type: ')$stage_type";
         echo "$(colorYellow ' Description:')";
         echo " UBstage can stage a fresh Ubuntu OS and runs post-configuration scripts to improve the configuration and security of Forge installed servers";
@@ -602,6 +607,9 @@ function showIntro() {
         echo ""
         echo "$(colorRed '***************************************')"
         echo "$(colorRed '* DANGER        DANGER                 DANGER        *')"
+        if [ $dry_run = false ]; then 
+                echo "$(colorRed '* Dry run mode is disabled!! Changes will be permanent!')" 
+        fi;
         echo "$(colorRed '***************************************')"
         echo "1) This script will PERMANENTLY change the configuration and overwrite configuration files"
         echo "2) This script requires a fresh install of Ubuntu or a server provisioned by Laravel Forge"
@@ -894,14 +902,14 @@ sectionHeader "Installing and configuring unattended upgrades"
 
 if ! isPackageInstalled "unattended-upgrades"; then
 	log warning "Unattended-upgrades is not installed. Installing it..."
-	apt install -y unattended-upgrades
+	dryRun apt install -y unattended-upgrades 
 fi
 log info "Unattended-upgradess is installed. Configuring it."
 
 # Overwriting 10Periodic with own config
 # Forge also uses this mechanism
-SOURCE_FILE="${current_path}/assets/10Periodic"         # Your version in assets/
-TARGET_FILE="/etc/apt/apt.conf.d/10Periodic"  # File to check and replace
+SOURCE_FILE="${current_path}/assets/10periodic"         # Your version in assets/
+TARGET_FILE="/etc/apt/apt.conf.d/10periodic"  # File to check and replace
 # Call the function
 dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
 
@@ -1274,12 +1282,12 @@ case $stage_type in
 	forge)
 		log info "Staging type is set to $stage_type"
 		# Ubuntu business
-		#setTimezone
+		#setTimezone # Tested
 		# hostname is set by forge during install
-		#setHostname
-        	hardenSSH
-		#setMaxSizeJournal
-        	#configUnattendedUpgrades
+		#setHostname # Tested
+        	#hardenSSH # Tested
+		#setMaxSizeJournal # tested
+        	configUnattendedUpgrades
         	#installNtpsec
 		#hushMotd
         	# Applications
@@ -1292,9 +1300,9 @@ case $stage_type in
 	;;
 	ubuntu)
 		log info "Staging type is set to $stage_type (default)"
-		#setHostname
-		#setTimezone
-		hardenSSH
+		#setHostname # Tested
+		#setTimezone # Tested
+		#hardenSSH # Tested
         	#hushMotd
 		#configUnattendedUpgrades
         	#setMaxSizeJournal
