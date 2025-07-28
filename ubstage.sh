@@ -1339,8 +1339,8 @@ case $stage_type in
         	#setupRkhunter tech@myosotis-ict.nl #tested
         	#setupLynis #tested
 		# forge business
-		addFirewallRulesForge
-		#customGitBranches
+		#addFirewallRulesForge # tested
+		customGitBranches
         
 	;;
 	ubuntu)
