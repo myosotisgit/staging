@@ -877,17 +877,17 @@ sectionHeader "Hush hush little MOTD"
 # Disabling motd messages on login
 hushed=0
 if [ ! -f /root/.hushlogin ]; then
+	log debug "Did not find /root/.hushlogin. Adding it"
         log info "Disabling message o/t day for root"
         dryRun touch /root/.hushlogin
-        hushed=1
+else
+	log debug "Found /root/.hushlogin. Motd is already hushed"
 fi
 if [ -d "$forge_user_dir" ] && [ ! -f "$forge_user_dir/.hushlogin" ]; then
         log info "Disabling message o/t day for $forge_user_dir"
         dryRun touch $forge_user_dir/.hushlogin
-        hushed++
-fi
-if [ "$hushed" > 0 ]; then
-        log info "Motd messages are hushed."
+else
+	log debug "Found hushlogin in $forge_user_dir. Motd is already hushed"
 fi
 
 } # END of function
@@ -1291,8 +1291,8 @@ case $stage_type in
         	#hardenSSH # Tested
 		#setMaxSizeJournal # tested
         	#configUnattendedUpgrades #tested
-        	installNtpsec
-		#hushMotd
+        	#installNtpsec #tested
+		hushMotd
         	# Applications
         	#setupRkhunter tech@myosotis-ict.nl
         	#setupLynis
@@ -1309,7 +1309,7 @@ case $stage_type in
         	#hushMotd
 		#configUnattendedUpgrades #tested
         	#setMaxSizeJournal
-		#installNtpsec
+		#installNtpsec #tested
         	# Applications
         	#setupRkhunter tech@myosotis-ict.nl
 		#setupLynis
