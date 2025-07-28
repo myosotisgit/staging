@@ -1165,35 +1165,38 @@ function installNtpsec() {
 	dryRun apt update & dryRun apt install ntpsec -y
 
 	# Check if install was correct
-  if ! command -v ntpq &> /dev/null; then
-        log warning "NTPsec installation failed!"
-        return 1
-  fi
+	if [[ "$dry_run" == "true" ]]; then
+		echo "Dry mode enabled. NTP was not installed. Skipping install checks"
+	else
+  		if ! command -v ntpq &> /dev/null; then
+        		log warning "NTP was not installed or the installation failed"
+        	return 1
+  		fi
+	fi
 	# Enable and start NTPsec service
-		echo ""
-		log info "Enabling ntpsec to run at system start"
+	echo ""
+	log info "Enabling ntpsec to run at system start"
     dryRun systemctl enable ntpsec
     dryRun systemctl start ntpsec
 
     # Check if NTPsec is running
     if systemctl is-active --quiet ntpsec; then
-				echo ""
+	echo ""
         log info "NTPsec service is running."
     else
-				echo ""
+	echo ""
         log warning "NTPsec is not running! Check the install log and configuration"
         return 1
     fi
 
     # Add firewall rule for NTP (UDP 123)
-		echo ""
+	echo ""
     echo "Allowing NTP through the firewall..."
     dryRun ufw allow 123/udp comment 'ntp traffic'
 		
 		echo ""
     log info "NTPsec installation and setup complete."
 		echo ""
-
 
 } # END of function
 
@@ -1287,8 +1290,8 @@ case $stage_type in
 		#setHostname # Tested
         	#hardenSSH # Tested
 		#setMaxSizeJournal # tested
-        	configUnattendedUpgrades
-        	#installNtpsec
+        	#configUnattendedUpgrades #tested
+        	installNtpsec
 		#hushMotd
         	# Applications
         	#setupRkhunter tech@myosotis-ict.nl
@@ -1304,7 +1307,7 @@ case $stage_type in
 		#setTimezone # Tested
 		#hardenSSH # Tested
         	#hushMotd
-		#configUnattendedUpgrades
+		#configUnattendedUpgrades #tested
         	#setMaxSizeJournal
 		#installNtpsec
         	# Applications
