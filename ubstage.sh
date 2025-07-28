@@ -675,7 +675,8 @@ function usage() {
   echo ""
   echo "Options:"
   echo ""
-  echo " -f     Run post-forge configuration"
+  echo " -f     Run Laravel Forge post configuration"
+  echo " -u     Run Ubuntu (24.04) post configuration"
   echo " -h     This help page"
   echo ""
   echo "Long options:"
@@ -1326,35 +1327,38 @@ function main() {
 case $stage_type in
 	forge)
 		log info "Staging type is set to $stage_type"
+		
 		# Ubuntu business
-		#setTimezone # Tested
-		# hostname is set by forge during install
-		#setHostname # Tested
-        	#hardenSSH # Tested
-		#setMaxSizeJournal # tested
-        	#configUnattendedUpgrades #tested
-        	#installNtpsec #tested
-		#hushMotd #tested
+		setTimezone # The hostname is set by Forge during provisioning
+		setHostname 
+        	hardenSSH 
+		setMaxSizeJournal
+        	configUnattendedUpgrades 
+        	installNtpsec 
+		hushMotd 
+	
         	# Applications
-        	#setupRkhunter tech@myosotis-ict.nl #tested
-        	#setupLynis #tested
+        	setupRkhunter tech@myosotis-ict.nl 
+        	setupLynis
+
 		# forge business
-		#addFirewallRulesForge # tested
+		addFirewallRulesForge
 		customGitBranches
         
 	;;
 	ubuntu)
 		log info "Staging type is set to $stage_type (default)"
-		#setHostname # Tested
-		#setTimezone # Tested
-		#hardenSSH # Tested
-        	#hushMotd #tested
-		#configUnattendedUpgrades #tested
-        	#setMaxSizeJournal
-		#installNtpsec #tested
+		setHostname 
+		setTimezone 
+		hardenSSH
+        	hushMotd 
+		configUnattendedUpgrades
+        	setMaxSizeJournal
+		installNtpsec 
+		 
         	# Applications
-        	#setupRkhunter tech@myosotis-ict.nl
-		#setupLynis
+        	setupRkhunter tech@myosotis-ict.nl
+		setupLynis
 	;;
 esac
 
