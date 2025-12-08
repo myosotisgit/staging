@@ -1354,6 +1354,7 @@ function setupChkrootkit() {
   log info "Installing CHKRootKit. When prompted choose: Internet Site"
   log info "Postfix config option: Choose localhost"
   areYouSure "Continue installing chkrootkit (Y/N): "
+  dryRun apt install -y dialog
   dryRun apt install -y chkrootkit
 
 } # END of function
