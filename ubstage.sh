@@ -175,20 +175,15 @@ chkCommands "${usedAppsArray[@]}"
 #----------------------------------------------------------
 # Function areYouSureExit
 function areYouSureExit() {
-    	read -r -p "$prompt" answer
-   case $answer in
-      [yY] )
-          echo "Continuing with script..."
-         ;;
-     [nN] )
-         echo "Exiting..."
-         exit 1
-         ;;
-     * )
-         echo "Incorrect choice. Choose Y/N next time... "
-         exit 1
-         ;;
-   esac
+
+local prompt="${1:-Are you sure? (y/n): }"
+read -r -p "$prompt" answer
+
+case "$answer" in
+	[yY]* ) echo "Continuing..." ;; # YES
+	* )	echo "Exiting..."; exit 1 ;; # NO (default)
+esac
+
 } # END of function
 
 #----------------------------------------------------------
@@ -654,22 +649,26 @@ function stageType() {
 	if [[ -z "$stage_type" ]]; then
 		# Stage Type was not set
 		echo "Warning: The stage type (forge/ubuntu) was not set on the commandline. Choose the stage type before continuing"
-	
-		read -r -p "Choose stage type (forge/ubuntu): " answer
-   		case $answer in
-      			forge)
-          		echo "Setting stage type to forge."
-			stage_type="forge"
-        		 ;;
-     			ubuntu)
-          		echo "Setting stage type to ubuntu."
-			stage_type="ubuntu"
-         		;;
-     			* )
-         		echo "Incorrect choice. Try again."
-         		exit 1
-         		;;
-   		esac
+		while true; do
+    read -r -p "Choose stage type (forge/ubuntu): " answer
+
+    case "$answer" in
+        forge)
+            echo "Setting stage type to forge."
+            stage_type="forge"
+            break
+            ;;
+        ubuntu)
+            echo "Setting stage type to ubuntu."
+            stage_type="ubuntu"
+            break
+            ;;
+        *)
+            echo "Incorrect choice. Please type 'forge' or 'ubuntu'."
+            ;;
+    esac
+done
+
 	fi	
 
 } # END of function
@@ -1054,24 +1053,9 @@ function setHostname() {
   # Ask user for hostname
   # Show current hostname
         if [ -x "$(command -v hostnamectl)" ]; then
-        log info "-- Current hostname: $(hostnamectl hostname)"
+           log info "-- Current hostname: $(hostnamectl hostname)"
 		colorRed "Warning: Forge sets the hostname when provisioning the server. It is not recommended to change the hostname using this script with Forge servers"
-		read -r -p "Do you want to set a new hostname: (Y/N): " answer
-		case $answer in
-      			[yY] )
-          		echo "You want to change the hostname..."
-			change_hostname=true
-         		;;
-     			[nN] )
-         		echo "Not changing the hostname"
-         		;;
-     			* )
-         		echo "Incorrect choice. Choose Y/N next time... "
-         		exit 1
-         		;;
-   		esac
-
-	if [[ "$change_hostname" == true ]]; then
+	   if areYouSure "Do you want to set a new hostname (y/n)? "; then
 		read -r -p "Enter the new hostname (without spaces and special characters!): " answer
 		if [[ "$answer" =~ ^[a-zA-Z0-9_-]+$ ]]; then
                         if [[ "$answer" != $(hostnamectl hostname) ]]; then
@@ -1087,10 +1071,9 @@ function setHostname() {
                                 log warning "-- New and current hostnames are the same. Not changing it"
                         fi
                 else
-                        log warning "-- The hostname contains invalid characters or spaces. The hostname will not be set"
+                      log warning "-- The hostname contains invalid characters or spaces. The hostname will not be set"
                 fi
-	fi # END of change_hostname check
-
+	   fi
         else
                 log warning "-- hostnamectl command not found. Cannot set the hostname"
         fi # END of hostnamectl check
@@ -1253,7 +1236,7 @@ sectionHeader "Rkhunter Check root kit"
     local email="$1"
 
     # Check if rkhunter is installed
-		if ! command -v rkhunter &>/dev/null; then
+	if ! command -v rkhunter &>/dev/null; then
         log info "Installing rkhunter..."
         dryRun sudo DEBIAN_FRONTEND=noninteractive apt-get install -y rkhunter 
         log info "Installing mailutils..."
@@ -1280,26 +1263,15 @@ sectionHeader "Rkhunter Check root kit"
     dryRun sudo rkhunter --update
     dryRun sudo rkhunter --propupd
     
-    read -r -p "You want to run a full rootkit scan (about 4 minutes)? (Y/N)" answer
-   case $answer in
-      [yY] )
-	      log info "Running RKhunster full rootkit check"
+    if areYouSure "You want to run a full rootkit scan (about 4 minutes)? (Y/N)"; then
+	log info "Running RKhunster full rootkit check"
     	rkhunter --check --sk
-         ;;
-     [nN] )
-         echo "Skipping full rootkit check"
-         ;;
-     * )
-         echo "Incorrect choice. SKipping full rootkit check... "
-         exit 1
-         ;;
-   esac
+    fi
+log info "Rkhunter rootkit checker installed and configured."
+log info "Cron script installed for updating and regular rootkit check. See /etc/cron.d"
 
-	log info "Rkhunter rootkit checker installed and configured."
-	log info "Cron script installed for updating and regular rootkit check. See /etc/cron.d"
 } # END of function
 
-echo "Hier?"
 #-----------------------------------------------
 # Function
 # Install and configure Lynis system checker
@@ -1321,9 +1293,9 @@ else
 fi
 
 # UNCHECKAGAIN
-#dryRun bash -c "curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /usr/share/keyrings/cisofy-archive-keyring.gpg"
+dryRun bash -c "curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /usr/share/keyrings/cisofy-archive-keyring.gpg"
 
-#dryRun bash -c "echo \"deb [signed-by=/usr/share/keyrings/cisofy-archive-keyring.gpg] https://packages.cisofy.com/community/lynis/deb stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
+dryRun bash -c "echo \"deb [signed-by=/usr/share/keyrings/cisofy-archive-keyring.gpg] https://packages.cisofy.com/community/lynis/deb stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
 
 dryRun apt install apt-transport-https
 dryRun bash -c "echo 'Acquire::Languages \"none\";' | sudo tee /etc/apt/apt.conf.d/99disable-translations"
@@ -1331,22 +1303,11 @@ dryRun apt update
 dryRun apt install lynis
 log info "Lynis is installed. Checking version"
 dryRun lynis show version
-    read -r -p "You want to run a full Lynis scan (about 2 minutes)? (Y/N)" answer
-   case $answer in
-      [yY] )
-	      log info "Running Lynis audit scan"
+   if areYouSure "You want to run a full Lynis scan (about 2 minutes)? (Y/N)"; then
+      log info "Running Lynis audit scan"
       log info "A typical Lynis end score is about 63"
-   		lynis audit system
-         ;;
-     [nN] )
-         echo "Skipping lynis scan"
-         ;;
-     * )
-         echo "Incorrect choice. Skipping full lynis scan... "
-         exit 1
-         ;;
-   esac
-
+      lynis audit system
+   fi
 } # END of function
 
 #-----------------------------------------------
@@ -1360,13 +1321,13 @@ function setupChkrootkit() {
 
   log info "Installing CHKRootKit. When prompted choose: Internet Site"
   log info "Postfix config option: Choose localhost"
-  areYouSure "Continue installing chkrootkit (Y/N): "
-  dryRun apt install -y dialog
-  dryRun apt install -y chkrootkit
+  if areYouSure "Continue installing chkrootkit (Y/N): "; then
+  	dryRun apt install -y dialog
+  	dryRun apt install -y chkrootkit
+  fi
 
 } # END of function
 
-echo "Hier einde?"
 #-----------------------------------------------
 # Function
 # Install Fail2Ban
@@ -1378,29 +1339,28 @@ function setupFail2ban() {
 
   log info "Installing fail2ban"
   log info "NOTE: fail2ban is not needed when SSH access is disabled!"
-  areYouSure "Continue installing fail2ban (Y/N): "
-  dryRun apt install -y fail2ban
-  log info "Adding default jail.local config file to /etc/fail2ban"
-  log info "adding SSH to jail.local file"
+  if areYouSure "Continue installing fail2ban (Y/N): "; then
+    dryRun apt install -y fail2ban
+    log info "Adding default jail.local config file to /etc/fail2ban"
+    log info "adding SSH to jail.local file"
 
-  # Overwriting 10Periodic with own config
-  # Forge also uses this mechanism
-  SOURCE_FILE="${current_path}/assets/jail.local"         # Your version in assets/
-  TARGET_FILE="/etc/fail2ban/jail.local"  # File to check and replace
-  # Call the function
-  dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
+    # Overwriting 10Periodic with own config
+    # Forge also uses this mechanism
+    SOURCE_FILE="${current_path}/assets/jail.local"         # Your version in assets/
+    TARGET_FILE="/etc/fail2ban/jail.local"  # File to check and replace
+    # Call the function
+    dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
 
-  log info "Enabling fail2ban at system (re)start"
-  dryRun systemctl enable fail2ban
-  dryRun systemctl start fail2ban
+    log info "Enabling fail2ban at system (re)start"
+    dryRun systemctl enable fail2ban
+    dryRun systemctl start fail2ban
 
-  log info "Viewing IP block list"
-  fail2ban-client status sshd
-  log debug "Unblock an IP address: fail2ban-client set sshd unbanip <IP>"
+    log info "Viewing IP block list"
+    fail2ban-client status sshd
+    log debug "Unblock an IP address: fail2ban-client set sshd unbanip <IP>"
+  fi
 
 } # END of function
-
-echo "Hier einde?"
 
 #************************************************************************
 #
