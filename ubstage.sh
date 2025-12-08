@@ -1230,7 +1230,7 @@ function ubuntuApps() {
   sectionHeader "${FUNCNAME[0]}"
 
   log info "Installing common Ubuntu apps"
- dryRun app install -Y vim nano software-properties-common
+ dryRun app install -y vim nano software-properties-common
 
 } # END of function
 
@@ -1340,6 +1340,25 @@ dryRun lynis show version
 
 } # END of function
 
+#-----------------------------------------------
+# Function
+# Install and configure Lynis system checker
+# See Lynis doc for most recent install procedure
+# https://packages.cisofy.com/community/#debian-ubuntu
+function setupChkrootkit() {
+
+# Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "Lynis System and rootkit checker"
+
+  log info "Installing CHKRootKit. When prompted choose: Internet Site"
+  log info "Postfix config option: Choose localhost"
+  areYouSure "Continue installing chkrootkit (Y/N): "
+  dryRun apt install -y chkrootkit
+
+} # END of function
+
+
 #************************************************************************
 #
 # MAIN APPLICATION START
@@ -1369,6 +1388,7 @@ case $stage_type in
 	
         	# Applications
         	setupRkhunter tech@myosotis-ict.nl 
+		setupChkrootkit
         	setupLynis
 
 		# forge business
@@ -1389,6 +1409,7 @@ case $stage_type in
 
         	# Applications
         	setupRkhunter tech@myosotis-ict.nl
+		setupChkrootkit
 		setupLynis
 	;;
 esac
