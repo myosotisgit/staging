@@ -173,15 +173,9 @@ done
 chkCommands "${usedAppsArray[@]}"
 
 #----------------------------------------------------------
-# Function areYouSure
-function areYouSure() {
-	if [[ -z "$1" ]]; then
-		local prompt="Are you sure you want to continue (Y/N): "
-	else
-		local prompt="$1"
-	fi
-
-    	read -p "$prompt" answer
+# Function areYouSureExit
+function areYouSureExit() {
+    	read -r -p "$prompt" answer
    case $answer in
       [yY] )
           echo "Continuing with script..."
@@ -195,6 +189,21 @@ function areYouSure() {
          exit 1
          ;;
    esac
+} # END of function
+
+#----------------------------------------------------------
+# Function
+# areYouSure
+#
+function areYouSure() {
+
+local prompt="${1:-Are you sure? (y/n): }"
+read -r -p "$prompt" answer
+case "$answer" in
+	[yY]* ) return 0 ;; # YES
+	* )	return 1 ;; # NO (default)
+esac
+
 } # END of function
 
 #----------------------------------------------------------
@@ -260,7 +269,7 @@ function logFileCheck() {
             fi
             echo "Logging is enabled. Log file is: $log_file_name_path"
             echo "**********************************************************" >>"$log_file_name_path"
-            echo "* Log started: $datetime_start." >>"$log_file_name_path" >>"$log_file_name_path"
+            echo "* Log started: $datetime_start." >>"$log_file_name_path" 
             echo "* Default log level: $log_level. User log level: $user_log_level" >>"$log_file_name_path"
             if [[ "$log_level" != "info" ]]; then
                echo "Set log level to 'info' to view default messages in this log file" >>"$log_file_name_path"
@@ -421,7 +430,7 @@ if [[ -r "$script_path/$config_file" ]]; then
   # ----------------------------------------------
   # Check if Path to Git Repos exists
   if [[ -r "$reposPath" && -d "$reposPath" ]]; then
-     if [[ verbose == "true" ]]; then
+     if [[ $verbose == "true" ]]; then
          echo "-- Path to git repositories ($reposPath) is found and is readable"
      fi
   else
@@ -646,7 +655,7 @@ function stageType() {
 		# Stage Type was not set
 		echo "Warning: The stage type (forge/ubuntu) was not set on the commandline. Choose the stage type before continuing"
 	
-		read -p "Choose stage type (forge/ubuntu): " answer
+		read -r -p "Choose stage type (forge/ubuntu): " answer
    		case $answer in
       			forge)
           		echo "Setting stage type to forge."
@@ -677,6 +686,7 @@ function usage() {
   echo ""
   echo " -f     Run Laravel Forge post configuration"
   echo " -u     Run Ubuntu (24.04) post configuration"
+  echo " -v     show version"
   echo " -h     This help page"
   echo ""
   echo "Long options:"
@@ -684,14 +694,13 @@ function usage() {
   echo " --force   Disable dry run mode and make permanent changes!"
   echo " --loglevel possible values: trace, debug, info, notice, warning, error, fatal"
   echo " For example 'ubstage.sh --warning'"
-        echo ""
+  echo ""
 }
 
 #*****************************************************************
 # COMMAND LINE OPTIONS
 #*****************************************************************
 
-#
 options=$(getopt -o 'fhuv' --long 'dry,force,trace,debug,info,notice,warning,error,fatal' -n "$0" -- "$@")
 if [ $? -ne 0 ]; then
     # if getopt returns a non-zero status there was an error
@@ -809,7 +818,7 @@ if [ "$?" == 1 ]; then
         log info "ufw firewall is not active. Enable your firewall. Rulew will be added."
 fi
 # Adding firewall rules, even when ufw is disabled
-for t in ${whitelistForgeIp[@]}; do
+for t in "${whitelistForgeIp[@]}"; do
   log debug "Adding new firewall rule for $t"
         dryRun ufw allow from $t to any port 22 comment "Laravel Forge $t"
 done
@@ -831,6 +840,7 @@ fi
 
 } # END of function
 
+
 #------------------------------------------------
 # Function
 # When Forge provisions a site, it is cloned using --single-branch option. This will tell git
@@ -849,7 +859,7 @@ mapfile -t git_dirs < <(find "${forge_user_dir}" -name .git -type d -prune)
 for d in "${git_dirs[@]}"; do
   echo "Processing directory: $d"
   cd "$d/.." || continue
-  read -p "Do you want to allow custom branches? (Y/N): " answer </dev/tty
+  read -r -p "Do you want to allow custom branches? (Y/N): " answer </dev/tty
 
   case "$answer" in
     [yY]) 
@@ -1046,7 +1056,7 @@ function setHostname() {
         if [ -x "$(command -v hostnamectl)" ]; then
         log info "-- Current hostname: $(hostnamectl hostname)"
 		colorRed "Warning: Forge sets the hostname when provisioning the server. It is not recommended to change the hostname using this script with Forge servers"
-		read -p "Do you want to set a new hostname: (Y/N): " answer
+		read -r -p "Do you want to set a new hostname: (Y/N): " answer
 		case $answer in
       			[yY] )
           		echo "You want to change the hostname..."
@@ -1062,7 +1072,7 @@ function setHostname() {
    		esac
 
 	if [[ "$change_hostname" == true ]]; then
-		read -p "Enter the new hostname (without spaces and special characters!): " answer
+		read -r -p "Enter the new hostname (without spaces and special characters!): " answer
 		if [[ "$answer" =~ ^[a-zA-Z0-9_-]+$ ]]; then
                         if [[ "$answer" != $(hostnamectl hostname) ]]; then
                                 #valid hostname
@@ -1099,9 +1109,10 @@ function setTimezone() {
     fi
 
     # Loop 1: Ask for confirmation to continue
+    log info "-- Current timezone: $(timedatectl show --property=Timezone --value)"
     while true; do
         log warning "It is strongly recommended to set the server timezone in Forge. Are you sure you want to continue?"
-        read -p "Continue? (Y/N): " answer
+        read -r -p "Continue? (Y/N): " answer
         case "$answer" in
             [yY])
                 echo "Continuing..."
@@ -1118,12 +1129,10 @@ function setTimezone() {
         esac
     done
 
-    log info "-- Current timezone: $(timedatectl show --property=Timezone --value)"
-
     local TIMEZONE
     # Loop 2: Ask for a valid timezone
     while true; do
-        read -p "Enter the new timezone (e.g., Europe/London): " TIMEZONE
+        read -r -p "Enter the new timezone (e.g., Europe/London): " TIMEZONE
 
         # Check if the entered timezone is a valid one
         if timedatectl list-timezones | grep -q "^$TIMEZONE$"; then
@@ -1141,7 +1150,7 @@ function setTimezone() {
     done
 
     # Final confirmation before making changes
-    read -p "Are you sure you want to set the timezone to '$TIMEZONE'? (Y/N): " final_answer
+    read -r -p "Are you sure you want to set the timezone to '$TIMEZONE'? (Y/N): " final_answer
     if [[ "$final_answer" =~ ^[Yy]$ ]]; then
         # Set the timezone using timedatectl
         dryRun timedatectl set-timezone "$TIMEZONE"
@@ -1155,7 +1164,6 @@ function setTimezone() {
     else
         echo "Aborting timezone change..."
     fi
-
 }
 
 # ----------------------------------------------
@@ -1214,15 +1222,15 @@ function installNtpsec() {
     echo "Allowing NTP through the firewall..."
     dryRun ufw allow 123/udp comment 'ntp traffic'
 		
-		echo ""
+	echo ""
     log info "NTPsec installation and setup complete."
-		echo ""
+	echo ""
 
 } # END of function
 
 #-----------------------------------------------
 # Function
-# Install and configure RKHunter rootkit checker
+# Install and configure common Ubuntu Apps
 function ubuntuApps() {
 
   # Logging
@@ -1272,7 +1280,7 @@ sectionHeader "Rkhunter Check root kit"
     dryRun sudo rkhunter --update
     dryRun sudo rkhunter --propupd
     
-    read -p "You want to run a full rootkit scan (about 4 minutes)? (Y/N)" answer
+    read -r -p "You want to run a full rootkit scan (about 4 minutes)? (Y/N)" answer
    case $answer in
       [yY] )
 	      log info "Running RKhunster full rootkit check"
@@ -1291,6 +1299,7 @@ sectionHeader "Rkhunter Check root kit"
 	log info "Cron script installed for updating and regular rootkit check. See /etc/cron.d"
 } # END of function
 
+echo "Hier?"
 #-----------------------------------------------
 # Function
 # Install and configure Lynis system checker
@@ -1298,8 +1307,8 @@ sectionHeader "Rkhunter Check root kit"
 # https://packages.cisofy.com/community/#debian-ubuntu
 function setupLynis() {
 
-# Logging
-  log debug "-- Started function ${FUNCNAME[0]} "
+ #Logging
+ log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "Lynis System and rootkit checker"
 
 # Check if keyrings folder exists, if not create
@@ -1311,10 +1320,10 @@ else
 	log debug "Lynis: Directory /usr/share/keyrings created"
 fi
 
-dryRun bash -c "curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key \
-  | sudo gpg --dearmor -o /usr/share/keyrings/cisofy-archive-keyring.gpg"
+# UNCHECKAGAIN
+#dryRun bash -c "curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /usr/share/keyrings/cisofy-archive-keyring.gpg"
 
-dryRun bash -c "echo \"deb [signed-by=/usr/share/keyrings/cisofy-archive-keyring.gpg] https://packages.cisofy.com/community/lynis/deb stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
+#dryRun bash -c "echo \"deb [signed-by=/usr/share/keyrings/cisofy-archive-keyring.gpg] https://packages.cisofy.com/community/lynis/deb stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
 
 dryRun apt install apt-transport-https
 dryRun bash -c "echo 'Acquire::Languages \"none\";' | sudo tee /etc/apt/apt.conf.d/99disable-translations"
@@ -1322,12 +1331,12 @@ dryRun apt update
 dryRun apt install lynis
 log info "Lynis is installed. Checking version"
 dryRun lynis show version
-    read -p "You want to run a full Lynis scan (about 2 minutes)? (Y/N)" answer
+    read -r -p "You want to run a full Lynis scan (about 2 minutes)? (Y/N)" answer
    case $answer in
       [yY] )
 	      log info "Running Lynis audit scan"
-	      log info "A typical Lynis end score is about 63"
-    		lynis audit system
+      log info "A typical Lynis end score is about 63"
+   		lynis audit system
          ;;
      [nN] )
          echo "Skipping lynis scan"
@@ -1342,9 +1351,7 @@ dryRun lynis show version
 
 #-----------------------------------------------
 # Function
-# Install and configure Lynis system checker
-# See Lynis doc for most recent install procedure
-# https://packages.cisofy.com/community/#debian-ubuntu
+# Install and configure chkrootkit
 function setupChkrootkit() {
 
 # Logging
@@ -1359,6 +1366,41 @@ function setupChkrootkit() {
 
 } # END of function
 
+echo "Hier einde?"
+#-----------------------------------------------
+# Function
+# Install Fail2Ban
+function setupFail2ban() {
+
+# Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "Lynis System and rootkit checker"
+
+  log info "Installing fail2ban"
+  log info "NOTE: fail2ban is not needed when SSH access is disabled!"
+  areYouSure "Continue installing fail2ban (Y/N): "
+  dryRun apt install -y fail2ban
+  log info "Adding default jail.local config file to /etc/fail2ban"
+  log info "adding SSH to jail.local file"
+
+  # Overwriting 10Periodic with own config
+  # Forge also uses this mechanism
+  SOURCE_FILE="${current_path}/assets/jail.local"         # Your version in assets/
+  TARGET_FILE="/etc/fail2ban/jail.local"  # File to check and replace
+  # Call the function
+  dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
+
+  log info "Enabling fail2ban at system (re)start"
+  dryRun systemctl enable fail2ban
+  dryRun systemctl start fail2ban
+
+  log info "Viewing IP block list"
+  fail2ban-client status sshd
+  log debug "Unblock an IP address: fail2ban-client set sshd unbanip <IP>"
+
+} # END of function
+
+echo "Hier einde?"
 
 #************************************************************************
 #
@@ -1370,7 +1412,7 @@ function setupChkrootkit() {
 function main() {
     # Start main script
     showIntro
-    areYouSure "Are you sure? (Y/N): "
+    areYouSureExit "Are you sure? (Y/N): "
     stageType
 
 case $stage_type in
@@ -1412,11 +1454,13 @@ case $stage_type in
         	setupRkhunter tech@myosotis-ict.nl
 		setupChkrootkit
 		setupLynis
+		setupFail2ban #fail2ban is not needed when sshd access is disabled
 	;;
 esac
 
 sectionHeader "ubstage script has completed. Reboot the system"
-}
+
+} # END of function
 
 # Start main function
 main 
