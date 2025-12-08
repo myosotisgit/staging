@@ -929,14 +929,18 @@ TARGET_FILE="/etc/apt/apt.conf.d/10periodic"  # File to check and replace
 # Call the function
 dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
 
-
-# Overwriting 50unattende-upgrades with own config
+# Overwriting 10Periodic with own config
 # Forge also uses this mechanism
+SOURCE_FILE="${current_path}/assets/20auto-upgrades"         # Your version in assets/
+TARGET_FILE="/etc/apt/apt.conf.d/20auto-upgrades"  # File to check and replace
+# Call the function
+dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
 
+# Overwriting 50unattended-upgrades with own config
+# Forge also uses this mechanism
 # Define file paths
 SOURCE_FILE="${current_path}/assets/50unattended-upgrades"         # Your version in assets/
 TARGET_FILE="/etc/apt/apt.conf.d/50unattended-upgrades"  # File to check and replace
-
 # Call the function
 dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
 
@@ -1219,6 +1223,21 @@ function installNtpsec() {
 #-----------------------------------------------
 # Function
 # Install and configure RKHunter rootkit checker
+function ubuntuApps() {
+
+  # Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "${FUNCNAME[0]}"
+
+  log info "Installing common Ubuntu apps"
+ dryRun app install -Y vim nano software-properties-common
+
+} # END of function
+
+
+#-----------------------------------------------
+# Function
+# Install and configure RKHunter rootkit checker
 function setupRkhunter() {
 
 sectionHeader "Rkhunter Check root kit"
@@ -1346,6 +1365,7 @@ case $stage_type in
         	configUnattendedUpgrades 
         	installNtpsec 
 		hushMotd 
+		ubuntuApps 
 	
         	# Applications
         	setupRkhunter tech@myosotis-ict.nl 
@@ -1365,7 +1385,8 @@ case $stage_type in
 		configUnattendedUpgrades
         	setMaxSizeJournal
 		installNtpsec 
-		 
+		ubuntuApps 
+
         	# Applications
         	setupRkhunter tech@myosotis-ict.nl
 		setupLynis
