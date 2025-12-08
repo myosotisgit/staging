@@ -1283,12 +1283,22 @@ function setupLynis() {
   log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "Lynis System and rootkit checker"
 
-dryRun bash -c "curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /usr/share/keyrings/lynis.gpg"
-dryRun bash -c "echo \"deb [signed-by=/usr/share/keyrings/lynis.gpg] https://packages.cisofy.com/community/lynis/deb/ stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
+# Check if keyrings folder exists, if not create
+if [[ -d /usr/share/keyrings ]]; then
+	log info "Lynis: /usr/share/keyrings folder exists"
+else 
+	log warn "Lynis: /usr/share/keyrings folder does not exist. creating it"
+	dryRun mkdir -p /usr/share/keyrings
+	log debug "Lynis: Directory /usr/share/keyrings created"
+fi
+
+dryRun bash -c "curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key \
+  | sudo gpg --dearmor -o /usr/share/keyrings/cisofy-archive-keyring.gpg"
+
+dryRun bash -c "echo \"deb [signed-by=/usr/share/keyrings/cisofy-archive-keyring.gpg] https://packages.cisofy.com/community/lynis/deb stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
 
 dryRun apt install apt-transport-https
 dryRun bash -c "echo 'Acquire::Languages \"none\";' | sudo tee /etc/apt/apt.conf.d/99disable-translations"
-dryRun bash -c "echo \"deb https://packages.cisofy.com/community/lynis/deb/ stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
 dryRun apt update
 dryRun apt install lynis
 log info "Lynis is installed. Checking version"
