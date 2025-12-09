@@ -1,2 +1,3 @@
 # Ignore config
 ubstage.conf
+ubstage-*.log

@@ -26,11 +26,16 @@ dry_run=true;
 # Default: empty (ask user)
 stage_type=""
 
+# Interactive mode
+# Ask user to confirm each step.
+# Default is true
+interactive=true
+
 # log level
 # values: trace, debug, info, notice (verbose), warning, error, fatal
 # default: warning
 # Can be set with the log level argument
-log_level="debug"
+log_level="info"
 
 # Log route
 # default set to 'screen'
@@ -192,12 +197,17 @@ esac
 #
 function areYouSure() {
 
-local prompt="${1:-Are you sure? (y/n): }"
-read -r -p "$prompt" answer
-case "$answer" in
+if [[ $interactive == "true" ]]; then
+  local prompt="${1:-Are you sure? (y/n): }"
+  read -r -p "> $prompt" answer
+  case "$answer" in
 	[yY]* ) return 0 ;; # YES
 	* )	return 1 ;; # NO (default)
-esac
+  esac
+else
+  return 0 # YES because non-interactive mode enabled
+fi
+
 
 } # END of function
 
@@ -230,7 +240,8 @@ function colorOrange(){
 # Usage: logFileCheck <log_route> <log_path> <current path>
 #
 # Global arguments
-# log_file_name_path
+# - log_file_name_path
+# - user_log_level
 #
 # Returns (global)
 # log_file_name_path: full path and filename to log file
@@ -238,7 +249,7 @@ function colorOrange(){
 function logFileCheck() {
 
    # Read arguments
-   #echo "Started function logFileCheck: logFileCheck arguments are: $@"
+   # echo "Started function logFileCheck: logFileCheck arguments are: $@"
    local log_route_local="$1"
    local log_path_local="$2"
    local current_path_local="$3"
@@ -253,7 +264,7 @@ function logFileCheck() {
 
          # Check if log_path is set to empty or its default
          if [[ -z "$log_path_local"  || "$log_path_local" =~ "_DEFAULT" ]]; then
-            #echo "log path has not been set or set to default. Using current path"
+            echo "log path has not been set or set to default. Using current path"
             # log path has not been set or set to default. Using current path
             log_file_name_path="$current_path_local/$log_filename"
             # Test if log file already exists
@@ -328,10 +339,11 @@ function logFileCheck() {
 
 function log() {
 
-   # Read arguments
-   #Not logging the log function :-p
+   # Logging the log function :-p
    #echo "Arguments fo log(): $@"
    #echo "Globals are: user log level: $user_log_level, log route: $log_route, log file: $log_file_name_path"
+
+   # Read arguments
    local log_level_arg="$1"
    shift 1
    local log_message="$@"
@@ -451,6 +463,12 @@ fi # END of reading config file check
 
 # Execute required function
 readConfigFile
+
+# ----------------------------------------------
+# Set up logging
+# This will create the log file, if it was not already created before
+logFileCheck "$log_route" "$log_path" "$current_path"
+
 
 #----------------------------------------------------------
 # Version check
@@ -605,6 +623,7 @@ function showIntro() {
         echo "$(colorYellow ' Ubuntu staging script')"
         echo "$(colorYellow ' Version: ')$version";
         echo "$(colorYellow ' Staging type: ')$stage_type";
+        echo "$(colorYellow ' Interactive mode: ')$interactive";
         echo "$(colorYellow ' Description:')";
         echo " UBstage can stage a fresh Ubuntu OS and runs post-configuration scripts to improve the configuration and security of Forge installed servers";
         echo "$(colorYellow '----------------------------------------------')"
@@ -685,7 +704,8 @@ function usage() {
   echo ""
   echo " -f     Run Laravel Forge post configuration"
   echo " -u     Run Ubuntu (24.04) post configuration"
-  echo " -v     show version"
+  echo " -v     Show version"
+  echo " -y     No confirmation dialogs (non-interactive mode, default is interactive)"
   echo " -h     This help page"
   echo ""
   echo "Long options:"
@@ -700,7 +720,7 @@ function usage() {
 # COMMAND LINE OPTIONS
 #*****************************************************************
 
-options=$(getopt -o 'fhuv' --long 'dry,force,trace,debug,info,notice,warning,error,fatal' -n "$0" -- "$@")
+options=$(getopt -o 'fuvyh' --long 'dry,force,trace,debug,info,notice,warning,error,fatal' -n "$0" -- "$@")
 if [ $? -ne 0 ]; then
     # if getopt returns a non-zero status there was an error
     usage
@@ -719,10 +739,6 @@ while true; do
           shift
           continue 
        ;;
-       '-h')
-           usage
-           exit 1
-       ;;
        '-u')
           stage_type=ubuntu
           shift
@@ -731,6 +747,15 @@ while true; do
        '-v')
           checkVersion
           exit 1
+       ;;
+       '-y')
+         interactive=false 
+          shift
+	  continue
+       ;;
+       '-h')
+           usage
+           exit 1
        ;;
        '--')
            shift
@@ -796,7 +821,9 @@ log debug "Script path: $script_path"
 log debug "Script env path: $script_env_path"
 log debug "Self path: $self_path"
 
-
+# Developer logging
+#echo "log_level: $log_level"
+#echo "user_log_level: $user_log_level"
 
 #************************************************************************
 #
@@ -811,12 +838,24 @@ function addFirewallRulesForge() {
 
 sectionHeader "UFW Firewall rules for forge"
 
+# Check if ufw is installed
+if ! command -v ufw >/dev/null 2>&1; then
+	echo "-- The ufw firewall package is not installed"
+	if areYouSure "Do you want to install the ufw firewall (recommended)? (y/n): "; then
+		log debug "Installing ufw firewall"
+		apt install ufw
+		log debug "ufw firewall was installed"
+		ufw status
+	fi # END of areYouSure
+else
+
 # Check if ufw is enabled
 $(ufw status | grep -qw active)
 if [ "$?" == 1 ]; then
-        log info "ufw firewall is not active. Enable your firewall. Rulew will be added."
+        log warn "ufw firewall is not active. Enable your firewall. Rules will be added passively."
 fi
 # Adding firewall rules, even when ufw is disabled
+if areYouSure "Do you want to add the Forge firewall rules for port 22 (recommended)? (y/n): "; then
 for t in "${whitelistForgeIp[@]}"; do
   log debug "Adding new firewall rule for $t"
         dryRun ufw allow from $t to any port 22 comment "Laravel Forge $t"
@@ -836,6 +875,10 @@ if sudo ufw status | grep -qE '^22/tcp \(v6\)\s+ALLOW\s+Anywhere \(v6\)'; then
 else
     echo "The default Forge firewall rula for port 22 was not found."
 fi
+
+fi # END of areYouSure
+
+fi # END of ufw installed?
 
 } # END of function
 
@@ -858,22 +901,11 @@ mapfile -t git_dirs < <(find "${forge_user_dir}" -name .git -type d -prune)
 for d in "${git_dirs[@]}"; do
   echo "Processing directory: $d"
   cd "$d/.." || continue
-  read -r -p "Do you want to allow custom branches? (Y/N): " answer </dev/tty
-
-  case "$answer" in
-    [yY]) 
+  if areYouSure "Do you want to allow custom git branches (recommended)? (y/n): "; then
       echo "info : Enabling custom branches in $d"
       echo "Executing: git config remote.origin.fetch refs/heads/*:refs/remotes/origin/*"
       dryRun git config remote.origin.fetch refs/heads/*:refs/remotes/origin/*
-      ;;
-    [nN]) 
-      echo "Skipping $d"
-      ;;
-    *) 
-      echo "Invalid input, skipping."
-      ;;
-  esac
-
+  fi # END of areYouSure
   echo "Moving to next directory..."
 done
 } # END of function
@@ -891,7 +923,9 @@ function setMaxSizeJournal() {
 	# Logging
   log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "${FUNCNAME[0]}"
+  if areYouSure "Do you want to set a maximum journal size of 2GB (recommended)? (y/n): "; then
     dryRun journalctl --vacuum-size=2G
+fi # END of areYouSure
 }
 
 #-----------------------------------------------
@@ -901,6 +935,7 @@ function hushMotd() {
 sectionHeader "Hush hush little MOTD"
 # Disabling motd messages on login
 hushed=0
+if areYouSure "Do you want to mute the message o/t day? (y/n): "; then
 if [ ! -f /root/.hushlogin ]; then
 	log debug "Did not find /root/.hushlogin. Adding it"
         log info "Disabling message o/t day for root"
@@ -914,6 +949,7 @@ if [ -d "$forge_user_dir" ] && [ ! -f "$forge_user_dir/.hushlogin" ]; then
 else
 	log debug "Found hushlogin in $forge_user_dir. Motd is already hushed"
 fi
+fi # END of areYouSure
 
 } # END of function
 
@@ -925,6 +961,7 @@ function configUnattendedUpgrades() {
 
 sectionHeader "Installing and configuring unattended upgrades"
 
+if areYouSure "Do you want to install Unattended upgrades package? (y/n): "; then
 if ! isPackageInstalled "unattended-upgrades"; then
 	log warning "Unattended-upgrades is not installed. Installing it..."
 	dryRun apt install -y unattended-upgrades 
@@ -957,8 +994,28 @@ dryRun replaceFileIfExists "$SOURCE_FILE" "$TARGET_FILE"
 log info "Checking if Unattended-upgrades are working. Dry-run. Check the input"
 sudo unattended-upgrades --dry-run --verbose
 
+fi # END of areYouSure
+
 } # END of function
 
+#-----------------------------------------------
+# Function
+# Extending auto-upgrades configuration
+#
+function installUfw() {
+
+# Logging
+  log debug "-- Started function ${FUNCNAME[0]} "s
+sectionHeader "Installing and configuring ufw firewall"
+
+
+# ufw is a required application so no user confirmation
+log info "Installing ufw firewall as a dependency."
+dryRun apt install ufw -y
+
+log info "ufw firewall was installed. Enable it with ufw enable"
+
+} # END of function
 
 #-----------------------------------------------
 # Function
@@ -976,10 +1033,11 @@ function hardenSSH() {
     # --- Step 1: Efficiently get all config values at once ---
     # Run sshd -G once and parse its output into an associative array.
     # This is far more efficient than running it multiple times.
+    declare -A ssh_config
     while read -r key value _; do
         # sshd -G outputs keys in lowercase
         ssh_config["$key"]="$value"
-    done < <(sshd -G 2>/dev/null) # Redirect stderr to hide potential warnings
+    done < <(sshd -T 2>/dev/null) # Redirect stderr to hide potential warnings
 
     # For debugging, show the values we found
     log debug "Effective SSH Config: PasswordAuthentication=${ssh_config[passwordauthentication]}, PermitRootLogin=${ssh_config[permitrootlogin]}, Banner=${ssh_config[banner]}"
@@ -1007,12 +1065,15 @@ function hardenSSH() {
     if [[ "${ssh_config[passwordauthentication]}" == "$req_password_auth" && \
           "$permit_root_ok" == true && \
           "${ssh_config[banner]}" == "$req_banner" ]]; then
-        log info "SSH is already hardened."
+        echo "-- SSH is already hardened."
         return 0 # Success, no changes needed
     fi
 
     # --- Step 3: If not hardened, apply the new configuration ---
-    log info "SSH is not hardened. Applying new configuration."
+    log info "SSH is not hardened yet."
+
+    echo "-- WARNING: hardening ssh will disable username/password authentication!"
+    if areYouSure "Do you want to harden SSH? (y/n): "; then
 
     # Ensure the config drop-in directory exists. Using -p is safer.
     if [[ ! -d "/etc/ssh/sshd_config.d" ]]; then
@@ -1037,6 +1098,8 @@ function hardenSSH() {
     else
         dryRun service ssh restart
     fi
+
+    fi # END of areYouSure
 
 } # END of function
 
@@ -1092,25 +1155,9 @@ function setTimezone() {
     fi
 
     # Loop 1: Ask for confirmation to continue
-    log info "-- Current timezone: $(timedatectl show --property=Timezone --value)"
-    while true; do
-        log warning "It is strongly recommended to set the server timezone in Forge. Are you sure you want to continue?"
-        read -r -p "Continue? (Y/N): " answer
-        case "$answer" in
-            [yY])
-                echo "Continuing..."
-                break # Exit the confirmation loop
-                ;;
-            [nN])
-                echo "Aborting timezone change..."
-                log debug "-- Aborted function ${FUNCNAME[0]}"
-                return 0 # Exit the function
-                ;;
-            *)
-                echo "Incorrect choice. Please choose Y or N."
-                ;;
-        esac
-    done
+    echo "-- Current timezone: $(timedatectl show --property=Timezone --value)"
+    log warning "When changing the server timezone you MUST also change the timezone in the Laravel Forge admin!"
+    if areYouSure "Do you want to set the timezone? (y/n): "; then
 
     local TIMEZONE
     # Loop 2: Ask for a valid timezone
@@ -1146,7 +1193,8 @@ function setTimezone() {
         log info "-- Timezone successfully updated to $TIMEZONE."
     else
         echo "Aborting timezone change..."
-    fi
+    fi # END of final confirmation
+    fi # END of areYouSure
 }
 
 # ----------------------------------------------
@@ -1159,6 +1207,7 @@ function installNtpsec() {
   log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "${FUNCNAME[0]}"
 
+  if areYouSure "Do you want to install ntp/ntpsec (recommended)? (y/n): "; then
 	# install ntp
 	log info "Checking for older version of ntp/ntpsec..."
 	if dpkg -l | grep -q "ntp"; then
@@ -1209,6 +1258,8 @@ function installNtpsec() {
     log info "NTPsec installation and setup complete."
 	echo ""
 
+fi # END of areYouSure
+
 } # END of function
 
 #-----------------------------------------------
@@ -1220,8 +1271,10 @@ function ubuntuApps() {
   log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "${FUNCNAME[0]}"
 
+  if areYouSure "Are you sure you want to install common Ubuntu apps (vim, nano, etc)? (y/n): "; then
   log info "Installing common Ubuntu apps"
- dryRun app install -y vim nano software-properties-common
+ dryRun apt install -y vim nano software-properties-common
+  fi # END of areYouSure
 
 } # END of function
 
@@ -1235,6 +1288,7 @@ sectionHeader "Rkhunter Check root kit"
 
     local email="$1"
 
+  if areYouSure "Are you sure you want to install RKHunter rootkit checker? (y/n): "; then
     # Check if rkhunter is installed
 	if ! command -v rkhunter &>/dev/null; then
         log info "Installing rkhunter..."
@@ -1270,6 +1324,8 @@ sectionHeader "Rkhunter Check root kit"
 log info "Rkhunter rootkit checker installed and configured."
 log info "Cron script installed for updating and regular rootkit check. See /etc/cron.d"
 
+  fi # END of areYouSure
+
 } # END of function
 
 #-----------------------------------------------
@@ -1283,6 +1339,8 @@ function setupLynis() {
  log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "Lynis System and rootkit checker"
 
+  if areYouSure "Do you want to install Lynis system audit tooling? (y/n): "; then
+
 # Check if keyrings folder exists, if not create
 if [[ -d /usr/share/keyrings ]]; then
 	log info "Lynis: /usr/share/keyrings folder exists"
@@ -1292,7 +1350,6 @@ else
 	log debug "Lynis: Directory /usr/share/keyrings created"
 fi
 
-# UNCHECKAGAIN
 dryRun bash -c "curl -fsSL https://packages.cisofy.com/keys/cisofy-software-public.key | sudo gpg --dearmor -o /usr/share/keyrings/cisofy-archive-keyring.gpg"
 
 dryRun bash -c "echo \"deb [signed-by=/usr/share/keyrings/cisofy-archive-keyring.gpg] https://packages.cisofy.com/community/lynis/deb stable main\" | sudo tee /etc/apt/sources.list.d/cisofy-lynis.list"
@@ -1308,6 +1365,9 @@ dryRun lynis show version
       log info "A typical Lynis end score is about 63"
       lynis audit system
    fi
+
+  fi # END of areYouSure
+
 } # END of function
 
 #-----------------------------------------------
@@ -1319,12 +1379,14 @@ function setupChkrootkit() {
   log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "Lynis System and rootkit checker"
 
+  if areYouSure "Do you want to install chkrootkit app? (y/n): "; then
+
   log info "Installing CHKRootKit. When prompted choose: Internet Site"
   log info "Postfix config option: Choose localhost"
-  if areYouSure "Continue installing chkrootkit (Y/N): "; then
-  	dryRun apt install -y dialog
-  	dryRun apt install -y chkrootkit
-  fi
+  dryRun apt install -y dialog
+  dryRun apt install -y chkrootkit
+
+  fi # END of areYouSure
 
 } # END of function
 
@@ -1335,11 +1397,11 @@ function setupFail2ban() {
 
 # Logging
   log debug "-- Started function ${FUNCNAME[0]} "
-  sectionHeader "Lynis System and rootkit checker"
+  sectionHeader "Fail2ban installer"
+  if areYouSure "Do you want to install fail2ban and add the SSH jail? (y/n): "; then
 
   log info "Installing fail2ban"
-  log info "NOTE: fail2ban is not needed when SSH access is disabled!"
-  if areYouSure "Continue installing fail2ban (Y/N): "; then
+  log info "NOTE: fail2ban is not needed when SSH password authentication is disabled!"
     dryRun apt install -y fail2ban
     log info "Adding default jail.local config file to /etc/fail2ban"
     log info "adding SSH to jail.local file"
@@ -1358,7 +1420,8 @@ function setupFail2ban() {
     log info "Viewing IP block list"
     fail2ban-client status sshd
     log debug "Unblock an IP address: fail2ban-client set sshd unbanip <IP>"
-  fi
+
+  fi # END of areYouSure
 
 } # END of function
 
@@ -1385,6 +1448,7 @@ case $stage_type in
         	hardenSSH 
 		setMaxSizeJournal
         	configUnattendedUpgrades 
+		installUfw
         	installNtpsec 
 		hushMotd 
 		ubuntuApps 
@@ -1406,6 +1470,7 @@ case $stage_type in
 		hardenSSH
         	hushMotd 
 		configUnattendedUpgrades
+		installUfw
         	setMaxSizeJournal
 		installNtpsec 
 		ubuntuApps 

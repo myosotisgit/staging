@@ -25,6 +25,18 @@ reposPath="CHANGE_DEFAULT"
 repo_ubstage_folder_name="CHANGE_DEFAULT"
 
 #----------------------------------------------------------
+# log level
+# values: trace, debug, info, notice (verbose), warning, error, fatal
+# default: info
+# Can be set with the log level argument (see help page)
+log_level="info"
+
+# Log route
+# default set to 'screen'
+# values: screen, file
+log_route="screen"
+
+#----------------------------------------------------------
 # Config file version
 # Version of the config file. This is checked and compared when running
 # wrupdate.sh against its internal version number. If there is a mismatch
