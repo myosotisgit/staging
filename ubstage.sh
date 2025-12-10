@@ -1540,10 +1540,23 @@ function installCertbot() {
 
 # Logging
   log debug "-- Started function ${FUNCNAME[0]} "
-  sectionHeader "Installer"
-  if areYouSureConfirm "Do you want to install ? (y/n): "; then
-        # test
-        echo ""
+  sectionHeader "Certbot Installer"
+  if areYouSureConfirm "Do you want to install certbot (snap)? (y/n): "; then
+        echo "-- Removing older certbot installs"
+	dryRun apt-get remove certbot
+	dryRun apt purge certbot
+	dryRun apt autoremove
+	echo "-- Installing snap to install certbot"
+	dryRun apt install snapd
+	dryRun snap install core
+	dryRun snap refresh core
+	dryRun snap install --classic certbot
+	ln -s /snap/bin/certbot /usr/bin/certbot
+	echo "-- Verifying certbot"
+	snap list certbot
+	echo "-- Installed snap and certbot"
+         sectionHeader "Make sure to configure certbot correctly..."
+
   fi # END of areYouSureConfirm
 } # END of function
 
@@ -1554,10 +1567,20 @@ function installPhpMyAdmin() {
 
 # Logging
   log debug "-- Started function ${FUNCNAME[0]} "
-  sectionHeader "Installer"
-  if areYouSureConfirm "Do you want to install ? (y/n): "; then
-        # test
-        echo ""
+  sectionHeader "Installer phpMyAdmin"
+  if areYouSureConfirm "Do you want to install phpmyadmin ? (y/n): "; then
+        echo "-- Installing phpmyadmin repo and phpmyadmin"
+	echo "-- When prompted choose 'Apache2'"
+	echo "-- When prompted for dbconfig-common: Select <Yes>." 
+	echo "-- when prompted for a new password for the phpmyadmin MySQL user:  leave it blank"
+
+	dryRun add-apt-repository ppa:phpmyadmin/ppa
+	dryRun apt update
+	dryRun apt info phpmyadmin
+	dryRun apt install phpmyadmin
+	echo "-- Installed phpmyadmin"
+         sectionHeader "Make sure to configure phpmyadmin correctly..."
+
   fi # END of areYouSureConfirm
 } # END of function
 
