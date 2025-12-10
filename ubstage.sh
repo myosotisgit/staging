@@ -536,28 +536,47 @@ addLinesToFile() {
 # ReplaceFileIfExists()
 # Function to replace a file if it exists
 function replaceFileIfExists() {
- # Logging
     log debug "-- Started function ${FUNCNAME[0]} "
 
     local source_file="$1"
     local target_file="$2"
+
     log debug "Source: $source_file"
     log debug "Target: $target_file"
 
+    # Check source
     if [[ ! -e "$source_file" ]]; then
-	    log fatal "Source file $source_file is not available"
-    else
-	log debug "Found source file: $source_file"
+        log fatal "Source file $source_file is not available"
+        return 1
     fi
+
+    # Ensure target directory exists
+    mkdir -p "$(dirname "$target_file")"
+
     if [[ -e "$target_file" ]]; then
-        log info "Replacing $target_file with $source_file..."
-        cp -f "$source_file" "$target_file"
-        log info "Replacing $target_file is complete."
+        # Ask confirmation before overwriting
+        log warn "Target file $target_file already exists."
+
+        read -r -p "Overwrite $target_file? (Y/N): " answer
+        case "$answer" in
+            [Yy]* )
+                log info "Overwriting $target_file..."
+                cp -f "$source_file" "$target_file"
+                log info "Overwrite complete."
+                ;;
+            * )
+                log info "User declined overwrite. No action taken."
+                return 0
+                ;;
+        esac
     else
-	log debug "Target file: $target_file not found. Not replacing it"
-        log warn "Target file $target_file does not exist. No action taken."
+        # Auto-copy when target does not exist
+        log info "Target file not found. Creating new file at $target_file..."
+        cp "$source_file" "$target_file"
+        log info "File created: $target_file"
     fi
 } # END of function
+
 
 
 #----------------------------------------------------------------
@@ -1116,8 +1135,8 @@ function setHostname() {
   # Ask user for hostname
   # Show current hostname
         if [ -x "$(command -v hostnamectl)" ]; then
-           log info "-- Current hostname: $(hostnamectl hostname)"
-		colorRed "Warning: Forge sets the hostname when provisioning the server. It is not recommended to change the hostname using this script with Forge servers"
+           colorYellow "-- Current hostname: $(hostnamectl hostname)"
+	colorRed "Warning: Forge sets the hostname when provisioning the server. It is not recommended to change the hostname using this script with Forge servers"
 	   if areYouSure "Do you want to set a new hostname (y/n)? "; then
 		read -r -p "Enter the new hostname (without spaces and special characters!): " answer
 		if [[ "$answer" =~ ^[a-zA-Z0-9_-]+$ ]]; then
@@ -1271,7 +1290,8 @@ function ubuntuApps() {
   log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "${FUNCNAME[0]}"
 
-  if areYouSure "Are you sure you want to install common Ubuntu apps (vim, nano, etc)? (y/n): "; then
+  echo "-- nano, vim, software-properties-common,"
+  if areYouSure "Are you sure you want to install common Ubuntu apps? (y/n): "; then
   log info "Installing common Ubuntu apps"
  dryRun apt install -y vim nano software-properties-common
   fi # END of areYouSure
@@ -1377,7 +1397,7 @@ function setupChkrootkit() {
 
 # Logging
   log debug "-- Started function ${FUNCNAME[0]} "
-  sectionHeader "Lynis System and rootkit checker"
+  sectionHeader "Chkrootkit rootkit checker"
 
   if areYouSure "Do you want to install chkrootkit app? (y/n): "; then
 
@@ -1402,11 +1422,15 @@ function setupFail2ban() {
 
   log info "Installing fail2ban"
   log info "NOTE: fail2ban is not needed when SSH password authentication is disabled!"
-    dryRun apt install -y fail2ban
-    log info "Adding default jail.local config file to /etc/fail2ban"
-    log info "adding SSH to jail.local file"
+  if [ ! -x "$(command -v fail2ban-client)" ]; then
+        echo "Fail2ban is not installed."
+    	dryRun apt install -y fail2ban
+  fi
 
-    # Overwriting 10Periodic with own config
+    log info "Configuring fail2ban - Adding default jail.local config file to /etc/fail2ban"
+    log info "Enabling SSH jail"
+
+    # Adding jail.local to /etc/fail2ban 
     # Forge also uses this mechanism
     SOURCE_FILE="${current_path}/assets/jail.local"         # Your version in assets/
     TARGET_FILE="/etc/fail2ban/jail.local"  # File to check and replace
@@ -1417,9 +1441,12 @@ function setupFail2ban() {
     dryRun systemctl enable fail2ban
     dryRun systemctl start fail2ban
 
+    log info "Status fail2ban daemon"
+    systemctl status fail2ban
+
     log info "Viewing IP block list"
-    fail2ban-client status sshd
-    log debug "Unblock an IP address: fail2ban-client set sshd unbanip <IP>"
+    sudo fail2ban-client banned
+    log debug "To unblock an IP address: fail2ban-client set sshd unbanip <IP>"
 
   fi # END of areYouSure
 

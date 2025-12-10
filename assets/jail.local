@@ -1,6 +1,5 @@
 [sshd]
-port    = ssh
-logpath = %(sshd_log)s
-backend = %(sshd_backend)s
 enabled = true
+port = ssh
+backend = systemd
 maxretry = 3
