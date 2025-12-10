@@ -128,14 +128,14 @@ chkRoot
 # In both case we need to load the config file
 function setPaths() {
 	
-    current_path=`pwd`
-    script_name=`basename "$0"` # path used to execute this script
-    script_path=`dirname "$0"` # is empty when executed from .
+    current_path=$(pwd)
+    script_name=$(basename "$0") # path used to execute this script
+    script_path=$(dirname "$0") # is empty when executed from .
     self_path="${0}" #Path and script that was executed
 
     # When this script is installed in the local PATH and executed without
     # specifying a path, the $PATH environment variable is used to locate the script
-    script_env_path=`command -v ubstage.sh`
+    script_env_path=$(command -v ubstage.sh)
 
     # Set datetime when this script started
     datetime_start=$(date +"%Y-%m-%d_%I_%M_%p")
@@ -167,7 +167,7 @@ function chkCommands() {
 local appsToCheck=("$@")
 
 for app in "${appsToCheck[@]}"; do
-    if [ ! -x "$(command -v $app)" ]; then
+    if [ ! -x "$(command -v "$app")" ]; then
         echo "Error: the command $app was not found on this system. Check usedAppsArray. Exiting...."
         exit 1
 		fi
@@ -207,8 +207,20 @@ if [[ $interactive == "true" ]]; then
 else
   return 0 # YES because non-interactive mode enabled
 fi
+} # END of function
 
+#----------------------------------------------------------
+# Function
+# areYouSureConfirm
+# This function ignores the non-interactive mode
+function areYouSureConfirm() {
 
+  local prompt="${1:-Are you sure? (y/n): }"
+  read -r -p "> $prompt" answer
+  case "$answer" in
+	[yY]* ) return 0 ;; # YES
+	* )	return 1 ;; # NO (default)
+  esac
 } # END of function
 
 #----------------------------------------------------------
@@ -294,7 +306,7 @@ function logFileCheck() {
                fi
                echo "Logging is enabled. Log file is: $log_file_name_path"
                echo "**********************************************************" >>"$log_file_name_path"
-               echo "* Log started: $datetime_start." >>"$log_file_name_path" >>"$log_file_name_path"
+               echo "* Log started: $datetime_start." >>"$log_file_name_path"
                echo "* Default log level: $log_level. User log level: $user_log_level" >>"$log_file_name_path"
                if [[ "$log_level" != "info" ]]; then
                   echo "Set log level to 'info' to view default messages in this log file" >>"$log_file_name_path"
@@ -351,7 +363,7 @@ function log() {
 
    if [ -z "$log_level_arg" ] || [ -z "$log_message" ]; then
        # Cannot use the log function within itself
-       colorRed "Fatal: Incorrect arguments for function log(): $log_level_arg, $log_message, $@";
+       colorRed "Fatal: Incorrect arguments for function log(): $log_level_arg, $log_message, $*";
        exit 1;
    fi
 
@@ -1449,7 +1461,104 @@ function setupFail2ban() {
     log debug "To unblock an IP address: fail2ban-client set sshd unbanip <IP>"
 
   fi # END of areYouSure
+} # END of function
 
+#------------------------------------------------------------------------
+# Extra application
+#------------------------------------------------------------------------
+
+#-----------------------------------------------
+# Function
+# Install Apache2
+function installApache() {
+
+# Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "Apache2 Installer"
+  if areYouSureConfirm "Do you want to install Apache2? (y/n): "; then
+          echo "-- Installing Apache and adding rules to ufw firewall"
+          dryRun apt install apache2
+          dryRun ufw allow "Apache Secure"
+          echo "-- Completed installing Apache"
+	  systemctl status apache2
+        sectionHeader "Make sure to configure Apache2 correctly..."
+  fi # END of areYouSureConfirm
+} # END of function
+
+#-----------------------------------------------
+# Function
+# Install MySQL
+function installMysql() {
+
+# Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "MySQL Installer"
+  if areYouSureConfirm "Do you want to install MySQL? (y/n): "; then
+          echo "-- Installing MySQL and add security"
+          dryRun apt install mysql-server
+          echo "-- Waiting for mysql server to start and show status"
+          sleep 5
+          systemctl is-enabled mysql.service
+          systemctl status mysql.service
+          echo "-- Securing MySQL"
+          dryRun mysql_secure_installation
+          echo "-- Completed installing MySQL"
+         sectionHeader "Make sure to configure MySQL correctly..."
+  fi # END of areYouSureConfirm
+} # END of function
+
+#-----------------------------------------------
+# Function
+# Install
+function installPHP() {
+
+# Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "PHP 7.4 Installer"
+  if areYouSureConfirm "Do you want to install php 7.4(apache2) ? (y/n): "; then
+	  echo "-- Installing php (ondrej Sury) and required modules for apache2 and mysql"
+	dryRun add-apt-repository ppa:ondrej/php 
+	apt update
+	dryRun apt install php7.4 
+	echo "-- Installing other php extentions"
+	dryRun apt install php7.4-{fpm,mbstring,xml,zip,curl,gd,mysql,intl,bcmath}
+	echo "-- Enabling fpm"
+	dryRun a2enmod proxy_fcgi setenvif
+	dryRun a2enconf php7.4-fpm
+	dryRun systemctl reload apache2
+	echo "-- Installed Apache2, php-fpm and enabled apache for php-fpm."
+         sectionHeader "Make sure to configure PHP correctly..."
+	
+  fi # END of areYouSureConfirm
+} # END of function
+
+
+#-----------------------------------------------
+# Function
+# Install
+function installCertbot() {
+
+# Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "Installer"
+  if areYouSureConfirm "Do you want to install ? (y/n): "; then
+        # test
+        echo ""
+  fi # END of areYouSureConfirm
+} # END of function
+
+#-----------------------------------------------
+# Function
+# Install
+function installPhpMyAdmin() {
+
+# Logging
+  log debug "-- Started function ${FUNCNAME[0]} "
+  sectionHeader "Installer"
+  if areYouSureConfirm "Do you want to install ? (y/n): "; then
+        # test
+        echo ""
+  fi # END of areYouSureConfirm
 } # END of function
 
 #************************************************************************
@@ -1492,21 +1601,28 @@ case $stage_type in
 	;;
 	ubuntu)
 		log info "Staging type is set to $stage_type (default)"
-		setHostname 
-		setTimezone 
-		hardenSSH
-        	hushMotd 
-		configUnattendedUpgrades
-		installUfw
-        	setMaxSizeJournal
-		installNtpsec 
-		ubuntuApps 
+		#setHostname 
+		#setTimezone 
+		#hardenSSH
+        	#hushMotd 
+		#configUnattendedUpgrades
+		#installUfw
+        	#setMaxSizeJournal
+		#installNtpsec 
+		#ubuntuApps 
 
         	# Applications
-        	setupRkhunter tech@myosotis-ict.nl
-		setupChkrootkit
-		setupLynis
-		setupFail2ban #fail2ban is not needed when sshd access is disabled
+        	#setupRkhunter tech@myosotis-ict.nl
+		#setupChkrootkit
+		#setupLynis
+		#setupFail2ban #fail2ban is not needed when sshd access is disabled
+
+		# Extra Application (confirm required)
+		installApache
+		installMysql
+		installPHP
+		installCertbot
+		installPhpMyAdmin
 	;;
 esac
 
