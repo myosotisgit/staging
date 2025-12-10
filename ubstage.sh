@@ -1624,21 +1624,21 @@ case $stage_type in
 	;;
 	ubuntu)
 		log info "Staging type is set to $stage_type (default)"
-		#setHostname 
-		#setTimezone 
-		#hardenSSH
-        	#hushMotd 
-		#configUnattendedUpgrades
-		#installUfw
-        	#setMaxSizeJournal
-		#installNtpsec 
-		#ubuntuApps 
+		setHostname 
+		setTimezone 
+		hardenSSH
+        	hushMotd 
+		configUnattendedUpgrades
+		installUfw
+        	setMaxSizeJournal
+		installNtpsec 
+		ubuntuApps 
 
         	# Applications
-        	#setupRkhunter tech@myosotis-ict.nl
-		#setupChkrootkit
-		#setupLynis
-		#setupFail2ban #fail2ban is not needed when sshd access is disabled
+        	setupRkhunter tech@myosotis-ict.nl
+		setupChkrootkit
+		setupLynis
+		setupFail2ban #fail2ban is not needed when sshd access is disabled
 
 		# Extra Application (confirm required)
 		installApache
