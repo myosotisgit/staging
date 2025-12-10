@@ -1,12 +1,8 @@
 # ubstage.sh
-A bash script that installs and configures certain applications on a fresh Ubuntu (24.04) install or a system provisioned with Laravel Forge.
-This script was called "postforge" previously as it was tailored to servers provisioned by Laravel Forge. But given its general purpose it was
-renamed to ubstage.sh as it also installs/configures applications on general Ubuntu installs.
+A staging script for Ubuntu 22.04 and higher) and systems provisioned with Laravel Forge
 
-Usage: ubstage.sh -fuh --force --<loglevel>
- -f : will run the post-configuration for Forge provisioned servers
- -u : will run the post-configuration for Ubuntu servers
-> use -h for the most recent parameters
+Usage: ubstage.sh <OPTIONS>
+> View the help page for all options
 
 ## ***************************************
 ## WARNING
@@ -15,6 +11,17 @@ Usage: ubstage.sh -fuh --force --<loglevel>
 * This script requires a fresh install of Ubuntu or a server provisioned by Laravel Forge
 
 # Changelog
+
+# v1.1 - 10 dec 2025
+- Added new install blocks for Apache2, MySQL, PHP, Cerbot, Phpmyadmin
+- Added new ubuntu blocks for chkrootkit, rkhunter and lynis.
+- Fixed ssh jail for fail2ban block
+- Improved file replace function
+- Removed legacy code (checked with shellcheck)
+- Added dependency install for ufw
+- Improved ufw configuration
+- Introduced two "Are you sure" functions with different logic 
+- Added an interactive mode that can be disabled
 
 # v1.0 - 28 Jul 2025
 - First stable release of ubstage.sh.
