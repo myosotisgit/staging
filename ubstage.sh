@@ -1290,10 +1290,10 @@ function ubuntuApps() {
   log debug "-- Started function ${FUNCNAME[0]} "
   sectionHeader "${FUNCNAME[0]}"
 
-  echo "-- nano, vim, software-properties-common,"
+  echo "-- nano, vim, software-properties-common,figlet"
   if areYouSure "Are you sure you want to install common Ubuntu apps? (y/n): "; then
   log info "Installing common Ubuntu apps"
- dryRun apt install -y vim nano software-properties-common
+ dryRun apt install -y vim nano software-properties-common figlet
   fi # END of areYouSure
 
 } # END of function
